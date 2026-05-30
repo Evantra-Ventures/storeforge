@@ -2,11 +2,27 @@ import { NextResponse } from "next/server";
 import { Resend } from "resend";
 import { createClient } from "@/lib/supabase/server";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   try {
+    if (!process.env.RESEND_API_KEY) {
+      return NextResponse.json(
+        { error: "RESEND_API_KEY is not configured." },
+        { status: 500 }
+      );
+    }
+
+    if (!process.env.RESEND_FROM_EMAIL) {
+      return NextResponse.json(
+        { error: "RESEND_FROM_EMAIL is not configured." },
+        { status: 500 }
+      );
+    }
+
+    const resend = new Resend(process.env.RESEND_API_KEY);
     const supabase = createClient();
+
     const { tenantId } = await request.json();
 
     if (!tenantId) {
@@ -30,7 +46,7 @@ export async function POST(request: Request) {
       .from("profiles")
       .select("email, full_name")
       .eq("tenant_id", tenant.id)
-      .in("role", ["owner", "admin"])
+      .in("role", ["owner", "store_owner", "admin", "super_admin"])
       .limit(1)
       .single();
 
@@ -188,7 +204,7 @@ export async function POST(request: Request) {
       .join("");
 
     const { data, error } = await resend.emails.send({
-      from: process.env.EMAIL_FROM || "StoreForge <onboarding@resend.dev>",
+      from: process.env.RESEND_FROM_EMAIL,
       to: [ownerProfile.email],
       subject: `Low stock alert for ${tenant.name}`,
       html: `

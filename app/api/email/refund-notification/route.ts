@@ -2,10 +2,25 @@ import { NextResponse } from "next/server";
 import { Resend } from "resend";
 import { createClient } from "@/lib/supabase/server";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   try {
+    if (!process.env.RESEND_API_KEY) {
+      return NextResponse.json(
+        { error: "RESEND_API_KEY is not configured." },
+        { status: 500 }
+      );
+    }
+
+    if (!process.env.RESEND_FROM_EMAIL) {
+      return NextResponse.json(
+        { error: "RESEND_FROM_EMAIL is not configured." },
+        { status: 500 }
+      );
+    }
+
+    const resend = new Resend(process.env.RESEND_API_KEY);
     const supabase = createClient();
 
     const { orderId, refundAmount, refundStatus } = await request.json();
@@ -48,11 +63,11 @@ export async function POST(request: Request) {
         ? Number(refundAmount)
         : Number(order.refunded_amount || 0);
 
-    const finalRefundStatus =
-      refundStatus || order.refund_status || "partial";
+    const finalRefundStatus = refundStatus || order.refund_status || "partial";
+    const currency = order.currency || "GHS";
 
     const { data, error } = await resend.emails.send({
-      from: process.env.EMAIL_FROM || "StoreForge <onboarding@resend.dev>",
+      from: process.env.RESEND_FROM_EMAIL,
       to: [order.customer_email],
       subject: `Refund update for Order #${order.id.slice(0, 8)}`,
       html: `
@@ -73,7 +88,9 @@ export async function POST(request: Request) {
 
               <div style="background: #f1f5f9; border-radius: 12px; padding: 16px; margin: 24px 0;">
                 <p><strong>Order ID:</strong> #${order.id.slice(0, 8)}</p>
-                <p><strong>Refund Amount:</strong> GHS ${finalRefundAmount.toFixed(2)}</p>
+                <p><strong>Refund Amount:</strong> ${currency} ${finalRefundAmount.toFixed(
+                  2
+                )}</p>
                 <p><strong>Refund Status:</strong> ${finalRefundStatus}</p>
               </div>
 

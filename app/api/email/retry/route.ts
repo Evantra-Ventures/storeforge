@@ -24,16 +24,25 @@ export async function POST(request: Request) {
       );
     }
 
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("tenant_id")
+      .select("tenant_id, role")
       .eq("id", user.id)
       .single();
 
-    if (!profile?.tenant_id) {
+    if (profileError || !profile?.tenant_id) {
       return NextResponse.json(
         { error: "Tenant profile not found." },
         { status: 404 }
+      );
+    }
+
+    const allowedRoles = ["owner", "store_owner", "admin", "super_admin"];
+
+    if (!allowedRoles.includes(profile.role)) {
+      return NextResponse.json(
+        { error: "You do not have permission to retry emails." },
+        { status: 403 }
       );
     }
 

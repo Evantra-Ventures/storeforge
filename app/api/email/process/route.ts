@@ -23,14 +23,17 @@ type EmailQueueItem = {
 };
 
 function getBaseUrl() {
-  return (
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    process.env.VERCEL_URL?.startsWith("http")
+  if (process.env.NEXT_PUBLIC_SITE_URL) {
+    return process.env.NEXT_PUBLIC_SITE_URL;
+  }
+
+  if (process.env.VERCEL_URL) {
+    return process.env.VERCEL_URL.startsWith("http")
       ? process.env.VERCEL_URL
-      : process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : "http://localhost:3000"
-  );
+      : `https://${process.env.VERCEL_URL}`;
+  }
+
+  return "http://localhost:3000";
 }
 
 function absolutizeUrls(html: string | null) {
@@ -88,13 +91,11 @@ export async function POST(request: Request) {
     const resend = new Resend(process.env.RESEND_API_KEY);
 
     const body = await request.json().catch(() => ({}));
-
     const limit = Math.min(Number(body.limit || 10), 50);
 
     const { data: queueItems, error: queueError } = await supabase
       .from("notification_email_queue")
-      .select(
-        `
+      .select(`
         id,
         tenant_id,
         customer_notification_id,
@@ -110,8 +111,7 @@ export async function POST(request: Request) {
         attempts,
         max_attempts,
         metadata
-      `
-      )
+      `)
       .eq("status", "pending")
       .lte("scheduled_at", new Date().toISOString())
       .lt("attempts", 3)

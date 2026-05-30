@@ -3,6 +3,20 @@ import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
+function getBaseUrl() {
+  if (process.env.NEXT_PUBLIC_SITE_URL) {
+    return process.env.NEXT_PUBLIC_SITE_URL;
+  }
+
+  if (process.env.VERCEL_URL) {
+    return process.env.VERCEL_URL.startsWith("http")
+      ? process.env.VERCEL_URL
+      : `https://${process.env.VERCEL_URL}`;
+  }
+
+  return "http://localhost:3000";
+}
+
 export async function POST(request: Request) {
   try {
     const supabase = createClient();
@@ -28,7 +42,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const allowedRoles = ["store_owner", "admin", "super_admin"];
+    const allowedRoles = ["owner", "store_owner", "admin", "super_admin"];
 
     if (!allowedRoles.includes(profile.role)) {
       return NextResponse.json(
@@ -37,22 +51,21 @@ export async function POST(request: Request) {
       );
     }
 
+    if (!process.env.EMAIL_WORKER_SECRET) {
+      return NextResponse.json(
+        { error: "EMAIL_WORKER_SECRET is not configured." },
+        { status: 500 }
+      );
+    }
+
     const body = await request.json().catch(() => ({}));
     const limit = Math.min(Number(body.limit || 10), 50);
 
-    const baseUrl =
-      process.env.NEXT_PUBLIC_SITE_URL ||
-      (process.env.VERCEL_URL
-        ? process.env.VERCEL_URL.startsWith("http")
-          ? process.env.VERCEL_URL
-          : `https://${process.env.VERCEL_URL}`
-        : "http://localhost:3000");
-
-    const response = await fetch(`${baseUrl}/api/email/process`, {
+    const response = await fetch(`${getBaseUrl()}/api/email/process`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-email-worker-secret": process.env.EMAIL_WORKER_SECRET || "",
+        "x-email-worker-secret": process.env.EMAIL_WORKER_SECRET,
       },
       body: JSON.stringify({ limit }),
       cache: "no-store",

@@ -26,7 +26,7 @@ type OrderItem = {
         id: string;
         name: string;
         option_name: string;
-        option_value: string;
+        option_value: string | null;
         image_url: string | null;
         sku: string | null;
       }
@@ -58,6 +58,36 @@ type LoyaltyTransaction = {
   points: number;
 };
 
+function money(amount: number, currency = "GHS") {
+  return `${currency} ${Number(amount || 0).toFixed(2)}`;
+}
+
+function formatStatus(value: string | null) {
+  return (value || "pending").replaceAll("_", " ");
+}
+
+function getStatusBadgeClass(status: string | null) {
+  const value = status || "pending";
+
+  if (["paid", "completed", "delivered"].includes(value)) {
+    return "bg-green-100 text-green-700";
+  }
+
+  if (["processing", "preparing", "out_for_delivery"].includes(value)) {
+    return "bg-blue-100 text-blue-700";
+  }
+
+  if (["failed", "cancelled", "returned", "full"].includes(value)) {
+    return "bg-red-100 text-red-700";
+  }
+
+  if (["refunded", "partial"].includes(value)) {
+    return "bg-purple-100 text-purple-700";
+  }
+
+  return "bg-yellow-100 text-yellow-700";
+}
+
 export default async function MyOrdersPage() {
   const supabase = createClient();
 
@@ -87,7 +117,6 @@ export default async function MyOrdersPage() {
   let loyaltyRedemptions: LoyaltyRedemption[] = [];
   let loyaltyTransactions: LoyaltyTransaction[] = [];
 
-  
   if (orderIds.length > 0) {
     const { data: itemsData } = await supabase
       .from("order_items")
@@ -145,12 +174,6 @@ export default async function MyOrdersPage() {
     loyaltyTransactions = (transactionsData || []) as LoyaltyTransaction[];
   }
 
-  const money = (amount: number, currency = "GHS") =>
-    `${currency} ${Number(amount || 0).toFixed(2)}`;
-
-  const formatStatus = (value: string | null) =>
-    (value || "pending").replaceAll("_", " ");
-
   const getProduct = (item: OrderItem) => {
     if (!item.product) return null;
     return Array.isArray(item.product) ? item.product[0] : item.product;
@@ -159,59 +182,6 @@ export default async function MyOrdersPage() {
   const getVariant = (item: OrderItem) => {
     if (!item.variant) return null;
     return Array.isArray(item.variant) ? item.variant[0] : item.variant;
-  };
-
-  const getDeliveryBadgeClass = (status: string | null) => {
-    switch (status) {
-      case "delivered":
-        return "bg-green-100 text-green-700";
-      case "out_for_delivery":
-        return "bg-blue-100 text-blue-700";
-      case "failed":
-      case "returned":
-        return "bg-red-100 text-red-700";
-      case "preparing":
-        return "bg-yellow-100 text-yellow-700";
-      default:
-        return "bg-slate-100 text-slate-700";
-    }
-  };
-
-  const getPaymentBadgeClass = (status: string | null) => {
-    switch (status) {
-      case "paid":
-        return "bg-green-100 text-green-700";
-      case "refunded":
-        return "bg-purple-100 text-purple-700";
-      case "failed":
-        return "bg-red-100 text-red-700";
-      default:
-        return "bg-yellow-100 text-yellow-700";
-    }
-  };
-
-  const getOrderBadgeClass = (status: string | null) => {
-    switch (status) {
-      case "processing":
-        return "bg-blue-100 text-blue-700";
-      case "completed":
-        return "bg-green-100 text-green-700";
-      case "cancelled":
-        return "bg-red-100 text-red-700";
-      default:
-        return "bg-slate-100 text-slate-700";
-    }
-  };
-
-  const getRefundBadgeClass = (status: string | null) => {
-    switch (status) {
-      case "full":
-        return "bg-red-100 text-red-700";
-      case "partial":
-        return "bg-orange-100 text-orange-700";
-      default:
-        return "bg-slate-100 text-slate-700";
-    }
   };
 
   const getOrderItems = (orderId: string) =>
@@ -237,71 +207,144 @@ export default async function MyOrdersPage() {
     return Number(earned?.points || 0);
   };
 
+  const totalOrders = orders?.length || 0;
+  const paidOrders = (orders || []).filter(
+    (order: any) => order.payment_status === "paid"
+  ).length;
+  const activeDeliveries = (orders || []).filter((order: any) =>
+    ["pending", "preparing", "out_for_delivery"].includes(
+      order.delivery_status || "pending"
+    )
+  ).length;
+  const totalSpent = (orders || []).reduce(
+    (sum: number, order: any) => sum + Number(order.total_amount || 0),
+    0
+  );
+
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="bg-white border-b">
-        <div className="max-w-6xl mx-auto px-6 py-5 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
-          <a href="/" className="text-2xl font-bold">
+    <div className="min-h-screen bg-slate-50 text-slate-950">
+      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl flex-col gap-5 px-6 py-5 lg:flex-row lg:items-center lg:justify-between">
+          <a href="/" className="text-2xl font-bold tracking-tight">
             StoreForge
           </a>
 
-          <div className="flex items-center gap-4 flex-wrap lg:justify-end">
-            <a href="/" className="text-sm text-slate-500 hover:text-black">
+          <div className="flex flex-wrap items-center gap-4 lg:justify-end">
+            <a href="/" className="text-sm text-slate-500 hover:text-slate-950">
               Continue Shopping
             </a>
 
             <a
               href="/wishlist"
-              className="text-sm text-slate-500 hover:text-black"
+              className="text-sm text-slate-500 hover:text-slate-950"
             >
               Wishlist
             </a>
 
             <a
               href="/customer/loyalty"
-              className="text-sm text-slate-500 hover:text-black"
+              className="text-sm text-slate-500 hover:text-slate-950"
             >
               My Rewards
             </a>
 
             <a
               href="/customer/profile"
-              className="text-sm text-slate-500 hover:text-black"
+              className="text-sm text-slate-500 hover:text-slate-950"
             >
               My Profile
             </a>
 
-             <CustomerNotificationBell />
-             
+            <CustomerNotificationBell />
           </div>
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-6 py-12">
-        <div className="mb-10">
-          <h1 className="text-4xl font-bold">My Orders</h1>
-          <p className="text-slate-500 mt-2">
-            View your orders, variants, delivery updates, refunds, and loyalty
-            rewards.
-          </p>
-        </div>
+      <main className="mx-auto max-w-7xl space-y-8 px-6 py-10">
+        <section className="relative overflow-hidden rounded-[2rem] bg-slate-950 p-8 text-white shadow-sm">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(37,99,235,0.35),transparent_35%),radial-gradient(circle_at_top_left,rgba(168,85,247,0.25),transparent_35%)]" />
+
+          <div className="relative grid grid-cols-1 gap-8 lg:grid-cols-3 lg:items-center">
+            <div className="lg:col-span-2">
+              <div className="mb-6 inline-flex rounded-full border border-white/10 bg-white/10 px-4 py-2 text-sm text-slate-200">
+                Customer order center
+              </div>
+
+              <h1 className="text-4xl font-bold tracking-tight md:text-5xl">
+                Track your orders from checkout to delivery.
+              </h1>
+
+              <p className="mt-5 max-w-3xl text-lg leading-8 text-slate-300">
+                View your order history, payment status, delivery progress,
+                refunds, loyalty rewards, and reorder your favorite products.
+              </p>
+
+              <div className="mt-8 flex flex-col gap-4 sm:flex-row">
+                <a
+                  href="/"
+                  className="rounded-2xl bg-white px-6 py-4 text-center font-semibold text-slate-950 hover:bg-slate-200"
+                >
+                  Continue shopping
+                </a>
+
+                <a
+                  href="/customer/loyalty"
+                  className="rounded-2xl border border-white/15 px-6 py-4 text-center font-semibold text-white hover:bg-white/10"
+                >
+                  View rewards
+                </a>
+              </div>
+            </div>
+
+            <div className="rounded-[2rem] border border-white/10 bg-white p-4 text-slate-950 shadow-2xl">
+              <div className="rounded-[1.5rem] bg-gradient-to-br from-slate-950 to-blue-950 p-5 text-white">
+                <p className="text-sm text-slate-300">Order summary</p>
+
+                <h2 className="mt-2 text-4xl font-bold">{totalOrders}</h2>
+                <p className="mt-1 text-sm text-slate-300">total order(s)</p>
+
+                <div className="mt-6 space-y-3">
+                  <HeroMiniRow label="Paid orders" value={paidOrders} />
+                  <HeroMiniRow label="Active deliveries" value={activeDeliveries} />
+                  <HeroMiniRow label="Total spent" value={money(totalSpent)} />
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="grid grid-cols-1 gap-5 md:grid-cols-4">
+          <StatCard label="Total orders" value={totalOrders} helper="All purchases" />
+          <StatCard label="Paid orders" value={paidOrders} helper="Successful payments" />
+          <StatCard
+            label="Active deliveries"
+            value={activeDeliveries}
+            helper="Pending or in progress"
+          />
+          <StatCard label="Total spent" value={money(totalSpent)} helper="Across all stores" />
+        </section>
 
         {!orders || orders.length === 0 ? (
-          <div className="bg-white rounded-3xl border p-16 text-center">
+          <div className="rounded-3xl border border-slate-200 bg-white p-16 text-center shadow-sm">
+            <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100 text-2xl">
+              🛍️
+            </div>
+
             <h2 className="text-2xl font-bold">No orders yet</h2>
-            <p className="text-slate-500 mt-3">
+
+            <p className="mt-3 text-slate-500">
               Your orders will appear here after checkout.
             </p>
 
             <a
               href="/"
-              className="inline-block bg-black text-white px-6 py-3 rounded-xl mt-6"
+              className="mt-6 inline-block rounded-2xl bg-slate-950 px-6 py-3 font-semibold text-white hover:bg-slate-800"
             >
-              Start Shopping
+              Start shopping
             </a>
           </div>
         ) : (
-          <div className="space-y-6">
+          <section className="space-y-6">
             {orders.map((order: any) => {
               const items = getOrderItems(order.id);
               const visibleItems = items.slice(0, 3);
@@ -322,88 +365,119 @@ export default async function MyOrdersPage() {
               const currency = order.currency || "GHS";
 
               return (
-                <div
+                <article
                   key={order.id}
-                  className="bg-white rounded-3xl border p-6 hover:shadow-lg transition"
+                  className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-xl"
                 >
-                  <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs">
-                          #{order.id.slice(0, 8)}
-                        </span>
-
-                        <span
-                          className={`px-3 py-1 rounded-full text-xs capitalize ${getOrderBadgeClass(
-                            order.status
-                          )}`}
-                        >
-                          {formatStatus(order.status)}
-                        </span>
-
-                        <span
-                          className={`px-3 py-1 rounded-full text-xs capitalize ${getPaymentBadgeClass(
-                            order.payment_status
-                          )}`}
-                        >
-                          {formatStatus(order.payment_status)}
-                        </span>
-
-                        <span
-                          className={`px-3 py-1 rounded-full text-xs capitalize ${getDeliveryBadgeClass(
-                            order.delivery_status
-                          )}`}
-                        >
-                          Delivery: {formatStatus(order.delivery_status)}
-                        </span>
-
-                        {order.refund_status && (
-                          <span
-                            className={`px-3 py-1 rounded-full text-xs capitalize ${getRefundBadgeClass(
-                              order.refund_status
-                            )}`}
-                          >
-                            Refund: {formatStatus(order.refund_status)}
+                  <div className="border-b border-slate-100 p-6">
+                    <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+                            #{order.id.slice(0, 8)}
                           </span>
-                        )}
+
+                          <StatusBadge
+                            label={formatStatus(order.status)}
+                            className={getStatusBadgeClass(order.status)}
+                          />
+
+                          <StatusBadge
+                            label={`Payment: ${formatStatus(
+                              order.payment_status
+                            )}`}
+                            className={getStatusBadgeClass(
+                              order.payment_status
+                            )}
+                          />
+
+                          <StatusBadge
+                            label={`Delivery: ${formatStatus(
+                              order.delivery_status
+                            )}`}
+                            className={getStatusBadgeClass(
+                              order.delivery_status
+                            )}
+                          />
+
+                          {order.refund_status &&
+                            order.refund_status !== "none" && (
+                              <StatusBadge
+                                label={`Refund: ${formatStatus(
+                                  order.refund_status
+                                )}`}
+                                className={getStatusBadgeClass(
+                                  order.refund_status
+                                )}
+                              />
+                            )}
+                        </div>
+
+                        <div className="mt-5 flex items-center gap-4">
+                          {order.tenant?.logo_url ? (
+                            <img
+                              src={order.tenant.logo_url}
+                              alt={order.tenant.name}
+                              className="h-12 w-12 rounded-2xl border object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-950 text-sm font-bold text-white">
+                              {order.tenant?.name?.slice(0, 1) || "S"}
+                            </div>
+                          )}
+
+                          <div>
+                            <h2 className="text-xl font-bold text-slate-950">
+                              {order.tenant?.name || "Store"}
+                            </h2>
+
+                            <p className="text-sm text-slate-500">
+                              Placed{" "}
+                              {order.created_at
+                                ? new Date(order.created_at).toLocaleString()
+                                : "recently"}
+                            </p>
+                          </div>
+                        </div>
+
+                        <p className="mt-4 text-sm capitalize text-slate-500">
+                          {order.delivery_method || "delivery"}
+                          {order.shipping_area
+                            ? ` · ${order.shipping_area}`
+                            : ""}
+                          {order.shipping_city
+                            ? `, ${order.shipping_city}`
+                            : ""}
+                        </p>
                       </div>
 
-                      <p className="text-sm text-slate-500 mt-3">
-                        Placed {new Date(order.created_at).toLocaleString()}
-                      </p>
-
-                      <p className="text-sm text-slate-500 mt-2 capitalize">
-                        {order.delivery_method || "delivery"}
-                        {order.shipping_area ? ` · ${order.shipping_area}` : ""}
-                        {order.shipping_city ? `, ${order.shipping_city}` : ""}
-                      </p>
-
-                      {order.tenant?.name && (
-                        <p className="text-sm text-slate-500 mt-2">
-                          Store: {order.tenant.name}
+                      <div className="rounded-2xl bg-slate-50 p-5 lg:text-right">
+                        <p className="text-xs text-slate-500">Order total</p>
+                        <p className="mt-1 text-3xl font-bold text-slate-950">
+                          {money(Number(order.total_amount || 0), currency)}
                         </p>
-                      )}
+
+                        <p className="mt-1 text-xs text-slate-500">
+                          {items.length} item(s)
+                        </p>
+
+                        {refundedAmount > 0 && (
+                          <p className="mt-2 text-xs font-medium text-red-600">
+                            Refunded: {money(refundedAmount, currency)}
+                          </p>
+                        )}
+                      </div>
                     </div>
 
-                    <div className="lg:text-right">
-                      <p className="text-2xl font-bold">
-                        {money(Number(order.total_amount || 0), currency)}
-                      </p>
-
-                      <p className="text-xs text-slate-500 mt-1">
-                        {items.length} item(s)
-                      </p>
-
-                      {refundedAmount > 0 && (
-                        <p className="text-xs text-red-600 mt-1">
-                          Refunded: {money(refundedAmount, currency)}
-                        </p>
-                      )}
-                    </div>
+                    <OrderProgress
+                      paymentStatus={order.payment_status}
+                      orderStatus={order.status}
+                      deliveryStatus={order.delivery_status}
+                    />
                   </div>
 
                   {items.length > 0 && (
-                    <div className="mt-5 space-y-3">
+                    <div className="space-y-3 p-6">
                       {visibleItems.map((item) => {
                         const product = getProduct(item);
                         const variant = getVariant(item);
@@ -413,14 +487,14 @@ export default async function MyOrdersPage() {
                         return (
                           <div
                             key={item.id}
-                            className="flex items-center gap-4 bg-slate-50 rounded-2xl p-3"
+                            className="flex items-center gap-4 rounded-2xl bg-slate-50 p-4"
                           >
-                            <div className="w-14 h-14 rounded-xl bg-slate-100 overflow-hidden flex items-center justify-center">
+                            <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl bg-slate-100">
                               {imageUrl ? (
                                 <img
                                   src={imageUrl}
                                   alt={product?.name || "Product"}
-                                  className="w-full h-full object-cover"
+                                  className="h-full w-full object-cover"
                                 />
                               ) : (
                                 <span className="text-xs text-slate-400">
@@ -429,30 +503,30 @@ export default async function MyOrdersPage() {
                               )}
                             </div>
 
-                            <div className="flex-1">
-                              <p className="font-medium text-sm">
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate font-semibold text-slate-950">
                                 {product?.name || "Product"}
                               </p>
 
                               {variant && (
-                                <p className="text-xs text-purple-700 mt-1">
+                                <p className="mt-1 text-xs text-blue-700">
                                   {variant.option_name}: {variant.option_value}
                                 </p>
                               )}
 
                               {variant?.sku && (
-                                <p className="text-xs text-slate-400 mt-1">
+                                <p className="mt-1 text-xs text-slate-400">
                                   SKU: {variant.sku}
                                 </p>
                               )}
 
-                              <p className="text-xs text-slate-500 mt-1">
+                              <p className="mt-1 text-xs text-slate-500">
                                 Qty {item.quantity} ×{" "}
                                 {money(Number(item.price || 0), currency)}
                               </p>
                             </div>
 
-                            <p className="font-semibold text-sm">
+                            <p className="text-sm font-bold text-slate-950">
                               {money(
                                 Number(item.price || 0) *
                                   Number(item.quantity || 0),
@@ -474,18 +548,17 @@ export default async function MyOrdersPage() {
                   {(pointsRedeemed > 0 ||
                     pointsEarned > 0 ||
                     loyaltyDiscount > 0) && (
-                    <div className="mt-5 bg-green-50 border border-green-200 rounded-2xl p-4">
-                      <div className="flex items-center justify-between gap-4 flex-wrap">
+                    <div className="mx-6 rounded-2xl border border-green-200 bg-green-50 p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-4">
                         <div>
                           <p className="font-semibold text-green-800">
-                            Loyalty Rewards
+                            Loyalty rewards
                           </p>
 
-                          <div className="flex items-center gap-3 flex-wrap mt-2 text-sm">
+                          <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
                             {pointsRedeemed > 0 && (
                               <span className="text-green-700">
-                                Redeemed {pointsRedeemed.toLocaleString()}{" "}
-                                points
+                                Redeemed {pointsRedeemed.toLocaleString()} points
                               </span>
                             )}
 
@@ -507,33 +580,33 @@ export default async function MyOrdersPage() {
                           href="/customer/loyalty"
                           className="text-sm font-medium text-green-700 hover:underline"
                         >
-                          My Rewards →
+                          My rewards →
                         </a>
                       </div>
                     </div>
                   )}
 
-                  <div className="mt-5 grid grid-cols-1 sm:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-1 gap-3 p-6 sm:grid-cols-4">
                     <a
                       href={`/order-success/${order.id}`}
-                      className="bg-black text-white py-3 rounded-2xl text-center text-sm font-medium hover:opacity-90"
+                      className="rounded-2xl bg-slate-950 py-3 text-center text-sm font-semibold text-white hover:bg-slate-800"
                     >
-                      View Details
+                      View details
                     </a>
 
                     {order.tenant?.slug ? (
                       <a
                         href={`/store/${order.tenant.slug}`}
-                        className="border py-3 rounded-2xl text-center text-sm font-medium hover:bg-slate-100"
+                        className="rounded-2xl border border-slate-200 py-3 text-center text-sm font-semibold hover:bg-slate-50"
                       >
-                        Shop Again
+                        Shop again
                       </a>
                     ) : (
                       <a
                         href="/"
-                        className="border py-3 rounded-2xl text-center text-sm font-medium hover:bg-slate-100"
+                        className="rounded-2xl border border-slate-200 py-3 text-center text-sm font-semibold hover:bg-slate-50"
                       >
-                        Shop Again
+                        Shop again
                       </a>
                     )}
 
@@ -544,17 +617,133 @@ export default async function MyOrdersPage() {
 
                     <a
                       href="/customer/loyalty"
-                      className="border py-3 rounded-2xl text-center text-sm font-medium hover:bg-slate-100"
+                      className="rounded-2xl border border-slate-200 py-3 text-center text-sm font-semibold hover:bg-slate-50"
                     >
                       Rewards
                     </a>
                   </div>
-                </div>
+                </article>
               );
             })}
-          </div>
+          </section>
         )}
       </main>
+    </div>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  helper,
+}: {
+  label: string;
+  value: string | number;
+  helper: string;
+}) {
+  return (
+    <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+      <p className="text-sm text-slate-500">{label}</p>
+      <h2 className="mt-2 text-3xl font-bold text-slate-950">{value}</h2>
+      <p className="mt-2 text-xs text-slate-400">{helper}</p>
+    </div>
+  );
+}
+
+function HeroMiniRow({
+  label,
+  value,
+}: {
+  label: string;
+  value: string | number;
+}) {
+  return (
+    <div className="flex items-center justify-between rounded-2xl bg-white/10 px-4 py-3">
+      <span className="text-sm text-slate-300">{label}</span>
+      <span className="font-bold">{value}</span>
+    </div>
+  );
+}
+
+function StatusBadge({
+  label,
+  className,
+}: {
+  label: string;
+  className: string;
+}) {
+  return (
+    <span className={`rounded-full px-3 py-1 text-xs font-semibold capitalize ${className}`}>
+      {label}
+    </span>
+  );
+}
+
+function OrderProgress({
+  paymentStatus,
+  orderStatus,
+  deliveryStatus,
+}: {
+  paymentStatus: string | null;
+  orderStatus: string | null;
+  deliveryStatus: string | null;
+}) {
+  const paid = paymentStatus === "paid" || paymentStatus === "refunded";
+  const processing = ["processing", "completed"].includes(orderStatus || "");
+  const outForDelivery = ["out_for_delivery", "delivered"].includes(
+    deliveryStatus || ""
+  );
+  const delivered = deliveryStatus === "delivered";
+
+  const steps = [
+    {
+      label: "Paid",
+      complete: paid,
+    },
+    {
+      label: "Processing",
+      complete: processing,
+    },
+    {
+      label: "Out for delivery",
+      complete: outForDelivery,
+    },
+    {
+      label: "Delivered",
+      complete: delivered,
+    },
+  ];
+
+  return (
+    <div className="mt-6 grid grid-cols-1 gap-3 md:grid-cols-4">
+      {steps.map((step, index) => (
+        <div
+          key={step.label}
+          className={`rounded-2xl border p-4 ${
+            step.complete
+              ? "border-green-200 bg-green-50"
+              : "border-slate-200 bg-white"
+          }`}
+        >
+          <div
+            className={`mb-3 flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold ${
+              step.complete
+                ? "bg-green-600 text-white"
+                : "bg-slate-100 text-slate-400"
+            }`}
+          >
+            {step.complete ? "✓" : index + 1}
+          </div>
+
+          <p
+            className={`text-sm font-semibold ${
+              step.complete ? "text-green-800" : "text-slate-500"
+            }`}
+          >
+            {step.label}
+          </p>
+        </div>
+      ))}
     </div>
   );
 }

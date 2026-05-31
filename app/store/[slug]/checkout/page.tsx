@@ -191,7 +191,6 @@ export default function StoreCheckoutPage() {
     deliveryMethod === "delivery" ? Number(selectedShippingZone?.fee || 0) : 0;
 
   const loyaltyPointsBalance = Number(loyaltyAccount?.points_balance || 0);
-
   const maxRedeemableByBalance = loyaltyPointsBalance;
 
   const maxRedeemableBySettings =
@@ -756,7 +755,9 @@ export default function StoreCheckoutPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <p className="text-slate-500">Loading checkout...</p>
+        <div className="rounded-3xl bg-white p-8 shadow-sm">
+          <p className="text-slate-500">Loading secure checkout...</p>
+        </div>
       </div>
     );
   }
@@ -764,7 +765,7 @@ export default function StoreCheckoutPage() {
   if (!tenant) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center px-6">
-        <div className="bg-white rounded-2xl shadow p-8 text-center max-w-md">
+        <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-8 text-center max-w-md">
           <h1 className="text-2xl font-bold">Store not found</h1>
           <p className="text-slate-500 mt-2">
             This checkout page could not find the store.
@@ -780,15 +781,20 @@ export default function StoreCheckoutPage() {
         <CheckoutHeader tenant={tenant} />
 
         <div className="max-w-3xl mx-auto px-6 py-16">
-          <div className="bg-white rounded-3xl shadow p-10 text-center">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-10 text-center">
+            <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-950 text-white">
+              🛒
+            </div>
+
             <h1 className="text-3xl font-bold">Your cart is empty</h1>
+
             <p className="text-slate-500 mt-3">
               Add products to your cart before checkout.
             </p>
 
             <a
               href={`/store/${tenant.slug}`}
-              className="inline-block bg-black text-white px-6 py-3 rounded-xl mt-6"
+              className="inline-block bg-slate-950 text-white px-6 py-3 rounded-2xl mt-6"
             >
               Back to Store
             </a>
@@ -802,242 +808,275 @@ export default function StoreCheckoutPage() {
     <div className="min-h-screen bg-slate-50">
       <CheckoutHeader tenant={tenant} />
 
-      <main className="max-w-7xl mx-auto px-6 py-10">
-        <div className="flex items-center gap-4 flex-wrap">
-          <a
-            href={`/store/${tenant.slug}/cart`}
-            className="text-sm text-slate-500 hover:text-black"
-          >
-            ← Back to Cart
-          </a>
+      <main className="max-w-7xl mx-auto px-6 py-8 lg:py-12">
+        <div className="mb-8 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <a
+              href={`/store/${tenant.slug}/cart`}
+              className="text-sm font-medium text-slate-500 hover:text-slate-950"
+            >
+              ← Back to cart
+            </a>
 
-          <a
-            href="/customer/loyalty"
-            className="text-sm text-slate-500 hover:text-black"
-          >
-            My Rewards
-          </a>
+            <h1 className="mt-4 text-4xl font-bold tracking-tight text-slate-950">
+              Secure checkout
+            </h1>
+
+            <p className="mt-2 text-slate-500">
+              Confirm your details, choose delivery, redeem rewards, and
+              continue to secure payment.
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm">
+            🔒 100% secure checkout powered by Paystack
+          </div>
         </div>
 
-        <div className="mt-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <section className="lg:col-span-2 space-y-6">
-            {errorMessage && (
-              <div className="bg-red-100 text-red-700 p-4 rounded-xl">
-                {errorMessage}
-              </div>
-            )}
+        <div className="mb-8 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <StepPill number="1" title="Information" active />
+            <StepPill number="2" title="Shipping" active />
+            <StepPill number="3" title="Payment" />
+          </div>
+        </div>
 
-            <div className="bg-white rounded-3xl shadow p-6 space-y-5">
-              <div>
-                <h1 className="text-2xl font-bold">Checkout</h1>
-                <p className="text-slate-500 mt-1">
-                  Confirm your details before continuing to Paystack.
-                </p>
-              </div>
+        {errorMessage && (
+          <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700">
+            {errorMessage}
+          </div>
+        )}
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <input
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  placeholder="Full name"
-                  className="border rounded-xl p-3"
-                />
-
-                <input
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Email"
-                  type="email"
-                  className="border rounded-xl p-3"
-                />
-
-                <input
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="Phone"
-                  className="border rounded-xl p-3"
-                />
-              </div>
-            </div>
-
-            <div className="bg-white rounded-3xl shadow p-6 space-y-5">
-              <div>
-                <h2 className="text-xl font-semibold">Delivery Method</h2>
-                <p className="text-sm text-slate-500 mt-1">
-                  Choose how you want to receive your order.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <label className="border rounded-2xl p-4 flex items-start gap-3 cursor-pointer">
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
+          <section className="space-y-6 lg:col-span-2">
+            <CheckoutPanel
+              eyebrow="Customer information"
+              title="Tell us who is receiving the order"
+              description="We’ll use this information for your order confirmation, receipt, and delivery updates."
+            >
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <Field label="Full name">
                   <input
-                    type="radio"
-                    checked={deliveryMethod === "delivery"}
-                    onChange={() => setDeliveryMethod("delivery")}
-                    className="mt-1"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder="Full name"
+                    className="field-input"
                   />
-                  <div>
-                    <p className="font-semibold">Delivery</p>
-                    <p className="text-xs text-slate-500">
-                      Ship this order to your address.
-                    </p>
-                  </div>
-                </label>
+                </Field>
 
-                <label className="border rounded-2xl p-4 flex items-start gap-3 cursor-pointer">
+                <Field label="Email address">
                   <input
-                    type="radio"
-                    checked={deliveryMethod === "pickup"}
-                    onChange={() => setDeliveryMethod("pickup")}
-                    className="mt-1"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="Email"
+                    type="email"
+                    className="field-input"
                   />
-                  <div>
-                    <p className="font-semibold">Pickup</p>
-                    <p className="text-xs text-slate-500">
-                      Pick up from the store if available.
-                    </p>
-                  </div>
-                </label>
+                </Field>
+
+                <Field label="Phone number">
+                  <input
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="Phone"
+                    className="field-input"
+                  />
+                </Field>
               </div>
-            </div>
+            </CheckoutPanel>
 
-            {deliveryMethod === "delivery" && (
-              <div className="bg-white rounded-3xl shadow p-6 space-y-5">
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <h2 className="text-xl font-semibold">Delivery Address</h2>
-                    <p className="text-sm text-slate-500 mt-1">
-                      Use a saved address or enter a new one.
-                    </p>
-                  </div>
+            <CheckoutPanel
+              eyebrow="Shipping options"
+              title="Choose how you want to receive your order"
+              description="Select delivery to your address or pickup from the store if available."
+            >
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <MethodCard
+                  title="Deliver to me"
+                  description="Get this order delivered to your address."
+                  selected={deliveryMethod === "delivery"}
+                  onClick={() => setDeliveryMethod("delivery")}
+                />
 
-                  <a
-                    href="/customer/profile"
-                    className="text-sm text-blue-600 hover:underline"
-                  >
-                    Manage addresses
-                  </a>
-                </div>
+                <MethodCard
+                  title="Pickup in-store"
+                  description="Pick up from the merchant’s location if available."
+                  selected={deliveryMethod === "pickup"}
+                  onClick={() => setDeliveryMethod("pickup")}
+                />
+              </div>
 
-                {addresses.length > 0 && (
-                  <div>
-                    <label className="block text-sm font-medium mb-2">
-                      Saved Address
-                    </label>
-
+              {deliveryMethod === "delivery" && shippingZones.length > 0 && (
+                <div className="mt-5">
+                  <Field label="Shipping zone">
                     <select
-                      value={selectedAddressId}
-                      onChange={(e) => {
-                        const id = e.target.value;
-                        setSelectedAddressId(id);
-
-                        const address = addresses.find(
-                          (item) => item.id === id
-                        );
-
-                        if (address) {
-                          fillFromAddress(address);
-                        }
-                      }}
-                      className="w-full border rounded-xl p-3"
+                      value={shippingZoneId}
+                      onChange={(e) => setShippingZoneId(e.target.value)}
+                      className="field-input"
                     >
-                      <option value="">Use a new address</option>
-
-                      {addresses.map((address) => (
-                        <option key={address.id} value={address.id}>
-                          {address.label}
-                          {address.is_default ? " · Default" : ""} —{" "}
-                          {[address.area, address.city, address.region]
-                            .filter(Boolean)
-                            .join(", ")}
+                      {shippingZones.map((zone) => (
+                        <option key={zone.id} value={zone.id}>
+                          {zone.name} — {money(Number(zone.fee || 0))}
+                          {zone.estimated_days
+                            ? ` · ${zone.estimated_days}`
+                            : ""}
                         </option>
                       ))}
                     </select>
+                  </Field>
+                </div>
+              )}
+            </CheckoutPanel>
+
+            {deliveryMethod === "delivery" && (
+              <CheckoutPanel
+                eyebrow="Delivery address"
+                title="Where should we deliver?"
+                description="Use a saved address or enter a new one for this order."
+                action={
+                  <a
+                    href="/customer/profile"
+                    className="text-sm font-medium text-blue-600 hover:underline"
+                  >
+                    Manage addresses
+                  </a>
+                }
+              >
+                {addresses.length > 0 && (
+                  <div className="mb-5">
+                    <Field label="Saved address">
+                      <select
+                        value={selectedAddressId}
+                        onChange={(e) => {
+                          const id = e.target.value;
+                          setSelectedAddressId(id);
+
+                          const address = addresses.find(
+                            (item) => item.id === id
+                          );
+
+                          if (address) {
+                            fillFromAddress(address);
+                          }
+                        }}
+                        className="field-input"
+                      >
+                        <option value="">Use a new address</option>
+
+                        {addresses.map((address) => (
+                          <option key={address.id} value={address.id}>
+                            {address.label}
+                            {address.is_default ? " · Default" : ""} —{" "}
+                            {[address.area, address.city, address.region]
+                              .filter(Boolean)
+                              .join(", ")}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
                   </div>
                 )}
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <input
-                    value={addressLine1}
-                    onChange={(e) => {
-                      setAddressLine1(e.target.value);
-                      setSelectedAddressId("");
-                    }}
-                    placeholder="Address line 1"
-                    className="border rounded-xl p-3"
-                  />
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <Field label="Address line 1">
+                    <input
+                      value={addressLine1}
+                      onChange={(e) => {
+                        setAddressLine1(e.target.value);
+                        setSelectedAddressId("");
+                      }}
+                      placeholder="Street address"
+                      className="field-input"
+                    />
+                  </Field>
 
-                  <input
-                    value={addressLine2}
-                    onChange={(e) => {
-                      setAddressLine2(e.target.value);
-                      setSelectedAddressId("");
-                    }}
-                    placeholder="Address line 2 optional"
-                    className="border rounded-xl p-3"
-                  />
+                  <Field label="Address line 2 optional">
+                    <input
+                      value={addressLine2}
+                      onChange={(e) => {
+                        setAddressLine2(e.target.value);
+                        setSelectedAddressId("");
+                      }}
+                      placeholder="Apartment, suite, etc."
+                      className="field-input"
+                    />
+                  </Field>
 
-                  <input
-                    value={area}
-                    onChange={(e) => {
-                      setArea(e.target.value);
-                      setSelectedAddressId("");
-                    }}
-                    placeholder="Area"
-                    className="border rounded-xl p-3"
-                  />
+                  <Field label="Area">
+                    <input
+                      value={area}
+                      onChange={(e) => {
+                        setArea(e.target.value);
+                        setSelectedAddressId("");
+                      }}
+                      placeholder="Area"
+                      className="field-input"
+                    />
+                  </Field>
 
-                  <input
-                    value={city}
-                    onChange={(e) => {
-                      setCity(e.target.value);
-                      setSelectedAddressId("");
-                    }}
-                    placeholder="City"
-                    className="border rounded-xl p-3"
-                  />
+                  <Field label="City">
+                    <input
+                      value={city}
+                      onChange={(e) => {
+                        setCity(e.target.value);
+                        setSelectedAddressId("");
+                      }}
+                      placeholder="City"
+                      className="field-input"
+                    />
+                  </Field>
 
-                  <input
-                    value={region}
-                    onChange={(e) => {
-                      setRegion(e.target.value);
-                      setSelectedAddressId("");
-                    }}
-                    placeholder="Region"
-                    className="border rounded-xl p-3"
-                  />
+                  <Field label="Region">
+                    <input
+                      value={region}
+                      onChange={(e) => {
+                        setRegion(e.target.value);
+                        setSelectedAddressId("");
+                      }}
+                      placeholder="Region"
+                      className="field-input"
+                    />
+                  </Field>
 
-                  <input
-                    value={country}
-                    onChange={(e) => {
-                      setCountry(e.target.value);
-                      setSelectedAddressId("");
-                    }}
-                    placeholder="Country"
-                    className="border rounded-xl p-3"
-                  />
+                  <Field label="Country">
+                    <input
+                      value={country}
+                      onChange={(e) => {
+                        setCountry(e.target.value);
+                        setSelectedAddressId("");
+                      }}
+                      placeholder="Country"
+                      className="field-input"
+                    />
+                  </Field>
                 </div>
 
-                <input
-                  value={postalCode}
-                  onChange={(e) => {
-                    setPostalCode(e.target.value);
-                    setSelectedAddressId("");
-                  }}
-                  placeholder="Postal code optional"
-                  className="border rounded-xl p-3 w-full"
-                />
+                <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <Field label="Postal code optional">
+                    <input
+                      value={postalCode}
+                      onChange={(e) => {
+                        setPostalCode(e.target.value);
+                        setSelectedAddressId("");
+                      }}
+                      placeholder="Postal code"
+                      className="field-input"
+                    />
+                  </Field>
 
-                <textarea
-                  value={shippingNote}
-                  onChange={(e) => setShippingNote(e.target.value)}
-                  placeholder="Delivery note optional"
-                  className="border rounded-xl p-3 w-full min-h-[100px]"
-                />
+                  <Field label="Delivery note optional">
+                    <input
+                      value={shippingNote}
+                      onChange={(e) => setShippingNote(e.target.value)}
+                      placeholder="Example: Call when outside"
+                      className="field-input"
+                    />
+                  </Field>
+                </div>
 
                 {!selectedAddressId && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <label className="border rounded-xl p-4 flex items-start gap-3">
+                  <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 p-4 hover:bg-slate-50">
                       <input
                         type="checkbox"
                         checked={saveAddress}
@@ -1052,7 +1091,7 @@ export default function StoreCheckoutPage() {
                       </div>
                     </label>
 
-                    <label className="border rounded-xl p-4 flex items-start gap-3">
+                    <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 p-4 hover:bg-slate-50">
                       <input
                         type="checkbox"
                         checked={makeDefaultAddress}
@@ -1070,214 +1109,31 @@ export default function StoreCheckoutPage() {
                     </label>
                   </div>
                 )}
-
-                {shippingZones.length > 0 && (
-                  <div>
-                    <label className="block text-sm font-medium mb-2">
-                      Delivery Zone
-                    </label>
-
-                    <select
-                      value={shippingZoneId}
-                      onChange={(e) => setShippingZoneId(e.target.value)}
-                      className="w-full border rounded-xl p-3"
-                    >
-                      {shippingZones.map((zone) => (
-                        <option key={zone.id} value={zone.id}>
-                          {zone.name} — {money(Number(zone.fee || 0))}
-                          {zone.estimated_days
-                            ? ` · ${zone.estimated_days}`
-                            : ""}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-              </div>
+              </CheckoutPanel>
             )}
           </section>
 
-          <aside className="bg-white rounded-3xl shadow p-6 h-fit lg:sticky lg:top-8">
-            <h2 className="text-xl font-semibold mb-5">Order Summary</h2>
-
-            <div className="space-y-4">
-              {cartItems.map((item) => {
-                const product = getProduct(item);
-                const variant = getVariant(item);
-                const imageUrl = variant?.image_url || product?.image_url;
-                const unitPrice = getItemPrice(item);
-
-                return (
-                  <div
-                    key={item.id}
-                    className="flex items-center gap-3 border-b pb-4"
-                  >
-                    <div className="w-16 h-16 rounded-xl bg-slate-100 overflow-hidden flex items-center justify-center">
-                      {imageUrl ? (
-                        <img
-                          src={imageUrl}
-                          alt={product?.name || "Product"}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <span className="text-xs text-slate-400">
-                          No image
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="flex-1">
-                      <p className="font-medium text-sm">
-                        {product?.name || "Product"}
-                      </p>
-
-                      {variant && (
-                        <p className="text-xs text-purple-700 mt-1">
-                          {variant.option_name}: {variant.option_value}
-                        </p>
-                      )}
-
-                      <p className="text-xs text-slate-500 mt-1">
-                        Qty {item.quantity} × {money(unitPrice)}
-                      </p>
-                    </div>
-
-                    <p className="font-semibold text-sm">
-                      {money(unitPrice * Number(item.quantity || 0))}
-                    </p>
-                  </div>
-                );
-              })}
-            </div>
-
-            {loyaltySettings?.is_enabled &&
-              loyaltySettings.allow_points_redemption && (
-                <div className="mt-6 border rounded-2xl p-4 space-y-4">
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <h3 className="font-semibold">
-                        {loyaltySettings.reward_name || "Loyalty Points"}
-                      </h3>
-                      <p className="text-xs text-slate-500 mt-1">
-                        Balance: {loyaltyPointsBalance.toLocaleString()}{" "}
-                        {loyaltySettings.reward_currency_label || "points"}
-                      </p>
-                    </div>
-
-                    <a
-                      href="/customer/loyalty"
-                      className="text-xs text-blue-600 hover:underline"
-                    >
-                      My Rewards
-                    </a>
-                  </div>
-
-                  <label className="flex items-start gap-3">
-                    <input
-                      type="checkbox"
-                      checked={useLoyaltyPoints}
-                      onChange={(e) => {
-                        setUseLoyaltyPoints(e.target.checked);
-
-                        if (!e.target.checked) {
-                          setRedeemPoints("");
-                        }
-                      }}
-                      className="mt-1"
-                    />
-
-                    <div>
-                      <p className="text-sm font-medium">
-                        Redeem points on this order
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        Minimum:{" "}
-                        {Number(
-                          loyaltySettings.minimum_points_to_redeem || 0
-                        ).toLocaleString()}{" "}
-                        points
-                      </p>
-                    </div>
-                  </label>
-
-                  {useLoyaltyPoints && (
-                    <div className="space-y-2">
-                      <input
-                        value={redeemPoints}
-                        onChange={(e) => setRedeemPoints(e.target.value)}
-                        type="number"
-                        min="0"
-                        max={maxRedeemableBySettings}
-                        placeholder="Points to redeem"
-                        className="border rounded-xl p-3 w-full"
-                      />
-
-                      <div className="flex items-center justify-between text-xs text-slate-500">
-                        <span>
-                          Max usable:{" "}
-                          {maxRedeemableBySettings.toLocaleString()} points
-                        </span>
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setRedeemPoints(String(maxRedeemableBySettings))
-                          }
-                          className="text-blue-600 hover:underline"
-                        >
-                          Use max
-                        </button>
-                      </div>
-
-                      {selectedRedeemPoints > 0 && (
-                        <p className="text-sm text-green-700">
-                          You will save {money(loyaltyDiscount)} using{" "}
-                          {selectedRedeemPoints.toLocaleString()} points.
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-
-            <div className="space-y-3 mt-6 text-sm">
-              <div className="flex justify-between">
-                <span className="text-slate-500">Subtotal</span>
-                <span className="font-medium">{money(subtotal)}</span>
-              </div>
-
-              <div className="flex justify-between">
-                <span className="text-slate-500">Shipping</span>
-                <span className="font-medium">{money(shippingFee)}</span>
-              </div>
-
-              {selectedRedeemPoints > 0 && (
-                <div className="flex justify-between text-green-700">
-                  <span>Loyalty Discount</span>
-                  <span className="font-medium">
-                    -{money(loyaltyDiscount)}
-                  </span>
-                </div>
-              )}
-
-              <div className="border-t pt-4 flex justify-between text-base">
-                <span className="font-semibold">Total</span>
-                <span className="font-bold">{money(total)}</span>
-              </div>
-            </div>
-
-            <button
-              onClick={handlePayNow}
-              disabled={paying || cartItems.length === 0}
-              className="w-full bg-black text-white py-4 rounded-2xl font-medium mt-6 hover:opacity-90 disabled:opacity-50"
-            >
-              {paying ? "Redirecting..." : "Pay Now"}
-            </button>
-
-            <p className="text-xs text-slate-500 text-center mt-4">
-              Payment is securely processed by Paystack.
-            </p>
-          </aside>
+          <OrderSummary
+            cartItems={cartItems}
+            money={money}
+            getProduct={getProduct}
+            getVariant={getVariant}
+            getItemPrice={getItemPrice}
+            subtotal={subtotal}
+            shippingFee={shippingFee}
+            total={total}
+            selectedRedeemPoints={selectedRedeemPoints}
+            loyaltyDiscount={loyaltyDiscount}
+            loyaltySettings={loyaltySettings}
+            loyaltyPointsBalance={loyaltyPointsBalance}
+            useLoyaltyPoints={useLoyaltyPoints}
+            setUseLoyaltyPoints={setUseLoyaltyPoints}
+            redeemPoints={redeemPoints}
+            setRedeemPoints={setRedeemPoints}
+            maxRedeemableBySettings={maxRedeemableBySettings}
+            handlePayNow={handlePayNow}
+            paying={paying}
+          />
         </div>
       </main>
     </div>
@@ -1286,26 +1142,28 @@ export default function StoreCheckoutPage() {
 
 function CheckoutHeader({ tenant }: { tenant: Tenant }) {
   return (
-    <header className="bg-white border-b sticky top-0 z-20">
-      <div className="max-w-7xl mx-auto px-6 py-5 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
+    <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur">
+      <div className="mx-auto flex max-w-7xl flex-col gap-5 px-6 py-5 lg:flex-row lg:items-center lg:justify-between">
         <a href={`/store/${tenant.slug}`} className="flex items-center gap-4">
           {tenant.logo_url ? (
             <img
               src={tenant.logo_url}
               alt={tenant.name}
-              className="w-12 h-12 rounded-xl object-cover border"
+              className="h-12 w-12 rounded-2xl border object-cover"
             />
           ) : (
-            <div className="w-12 h-12 rounded-xl bg-slate-200" />
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-950 text-lg font-bold text-white">
+              {tenant.name.slice(0, 1)}
+            </div>
           )}
 
           <div>
-            <p className="text-xl font-bold">{tenant.name}</p>
-            <p className="text-xs text-slate-500">Secure Checkout</p>
+            <p className="text-xl font-bold text-slate-950">{tenant.name}</p>
+            <p className="text-xs text-slate-500">Secure checkout</p>
           </div>
         </a>
 
-        <div className="flex items-center gap-4 flex-wrap">
+        <div className="flex flex-wrap items-center gap-4">
           <a
             href={`/store/${tenant.slug}`}
             className="text-sm text-slate-500 hover:text-black"
@@ -1341,16 +1199,385 @@ function CheckoutHeader({ tenant }: { tenant: Tenant }) {
             My Rewards
           </a>
 
-           <CustomerNotificationBell tenantId={tenant.id} />
-          
+          <CustomerNotificationBell tenantId={tenant.id} />
+
           <a
             href={`/store/${tenant.slug}/cart`}
-            className="bg-black text-white px-4 py-2 rounded-xl text-sm hover:opacity-90"
+            className="rounded-xl bg-slate-950 px-4 py-2 text-sm text-white hover:bg-slate-800"
           >
             Cart
           </a>
         </div>
       </div>
     </header>
+  );
+}
+
+function CheckoutPanel({
+  eyebrow,
+  title,
+  description,
+  action,
+  children,
+}: {
+  eyebrow: string;
+  title: string;
+  description: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">
+            {eyebrow}
+          </p>
+          <h2 className="mt-2 text-xl font-bold text-slate-950">{title}</h2>
+          <p className="mt-1 text-sm leading-6 text-slate-500">
+            {description}
+          </p>
+        </div>
+
+        {action}
+      </div>
+
+      {children}
+    </div>
+  );
+}
+
+function StepPill({
+  number,
+  title,
+  active,
+}: {
+  number: string;
+  title: string;
+  active?: boolean;
+}) {
+  return (
+    <div
+      className={`flex items-center gap-3 rounded-2xl border p-4 ${
+        active
+          ? "border-blue-200 bg-blue-50 text-blue-700"
+          : "border-slate-200 bg-slate-50 text-slate-500"
+      }`}
+    >
+      <span
+        className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold ${
+          active ? "bg-blue-600 text-white" : "bg-slate-200 text-slate-500"
+        }`}
+      >
+        {number}
+      </span>
+      <span className="font-semibold">{title}</span>
+    </div>
+  );
+}
+
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-2 block text-sm font-medium text-slate-700">
+        {label}
+      </span>
+      {children}
+    </label>
+  );
+}
+
+function MethodCard({
+  title,
+  description,
+  selected,
+  onClick,
+}: {
+  title: string;
+  description: string;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-2xl border p-5 text-left transition ${
+        selected
+          ? "border-blue-500 bg-blue-50 ring-2 ring-blue-100"
+          : "border-slate-200 bg-white hover:bg-slate-50"
+      }`}
+    >
+      <div className="flex items-start gap-3">
+        <span
+          className={`mt-1 flex h-5 w-5 items-center justify-center rounded-full border ${
+            selected ? "border-blue-600 bg-blue-600" : "border-slate-300"
+          }`}
+        >
+          {selected && <span className="h-2 w-2 rounded-full bg-white" />}
+        </span>
+
+        <div>
+          <p className="font-semibold text-slate-950">{title}</p>
+          <p className="mt-1 text-sm leading-6 text-slate-500">
+            {description}
+          </p>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function OrderSummary({
+  cartItems,
+  money,
+  getProduct,
+  getVariant,
+  getItemPrice,
+  subtotal,
+  shippingFee,
+  total,
+  selectedRedeemPoints,
+  loyaltyDiscount,
+  loyaltySettings,
+  loyaltyPointsBalance,
+  useLoyaltyPoints,
+  setUseLoyaltyPoints,
+  redeemPoints,
+  setRedeemPoints,
+  maxRedeemableBySettings,
+  handlePayNow,
+  paying,
+}: {
+  cartItems: CartItem[];
+  money: (amount: number) => string;
+  getProduct: (item: CartItem) => Product | null;
+  getVariant: (item: CartItem) => Variant | null;
+  getItemPrice: (item: CartItem) => number;
+  subtotal: number;
+  shippingFee: number;
+  total: number;
+  selectedRedeemPoints: number;
+  loyaltyDiscount: number;
+  loyaltySettings: LoyaltySettings | null;
+  loyaltyPointsBalance: number;
+  useLoyaltyPoints: boolean;
+  setUseLoyaltyPoints: (value: boolean) => void;
+  redeemPoints: string;
+  setRedeemPoints: (value: string) => void;
+  maxRedeemableBySettings: number;
+  handlePayNow: () => void;
+  paying: boolean;
+}) {
+  return (
+    <aside className="h-fit rounded-3xl border border-slate-200 bg-white p-6 shadow-sm lg:sticky lg:top-28">
+      <div className="mb-5 flex items-center justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-bold text-slate-950">Order summary</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            {cartItems.length} item(s) in your cart
+          </p>
+        </div>
+
+        <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700">
+          Secure
+        </span>
+      </div>
+
+      <div className="space-y-4">
+        {cartItems.map((item) => {
+          const product = getProduct(item);
+          const variant = getVariant(item);
+          const imageUrl = variant?.image_url || product?.image_url;
+          const unitPrice = getItemPrice(item);
+
+          return (
+            <div
+              key={item.id}
+              className="flex items-center gap-3 border-b border-slate-100 pb-4"
+            >
+              <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl bg-slate-100">
+                {imageUrl ? (
+                  <img
+                    src={imageUrl}
+                    alt={product?.name || "Product"}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <span className="text-xs text-slate-400">No image</span>
+                )}
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-slate-950">
+                  {product?.name || "Product"}
+                </p>
+
+                {variant && (
+                  <p className="mt-1 text-xs text-blue-700">
+                    {variant.option_name}: {variant.option_value}
+                  </p>
+                )}
+
+                <p className="mt-1 text-xs text-slate-500">
+                  Qty {item.quantity} × {money(unitPrice)}
+                </p>
+              </div>
+
+              <p className="text-sm font-bold text-slate-950">
+                {money(unitPrice * Number(item.quantity || 0))}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+
+      {loyaltySettings?.is_enabled && loyaltySettings.allow_points_redemption && (
+        <div className="mt-6 rounded-2xl border border-blue-100 bg-blue-50 p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3 className="font-semibold text-slate-950">
+                {loyaltySettings.reward_name || "Loyalty Points"}
+              </h3>
+              <p className="mt-1 text-xs text-slate-600">
+                Balance: {loyaltyPointsBalance.toLocaleString()}{" "}
+                {loyaltySettings.reward_currency_label || "points"}
+              </p>
+            </div>
+
+            <a
+              href="/customer/loyalty"
+              className="text-xs font-medium text-blue-700 hover:underline"
+            >
+              My Rewards
+            </a>
+          </div>
+
+          <label className="mt-4 flex items-start gap-3">
+            <input
+              type="checkbox"
+              checked={useLoyaltyPoints}
+              onChange={(e) => {
+                setUseLoyaltyPoints(e.target.checked);
+
+                if (!e.target.checked) {
+                  setRedeemPoints("");
+                }
+              }}
+              className="mt-1"
+            />
+
+            <div>
+              <p className="text-sm font-medium text-slate-950">
+                Redeem points on this order
+              </p>
+              <p className="text-xs text-slate-500">
+                Minimum:{" "}
+                {Number(
+                  loyaltySettings.minimum_points_to_redeem || 0
+                ).toLocaleString()}{" "}
+                points
+              </p>
+            </div>
+          </label>
+
+          {useLoyaltyPoints && (
+            <div className="mt-4 space-y-2">
+              <input
+                value={redeemPoints}
+                onChange={(e) => setRedeemPoints(e.target.value)}
+                type="number"
+                min="0"
+                max={maxRedeemableBySettings}
+                placeholder="Points to redeem"
+                className="field-input bg-white"
+              />
+
+              <div className="flex items-center justify-between text-xs text-slate-500">
+                <span>
+                  Max usable: {maxRedeemableBySettings.toLocaleString()} points
+                </span>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setRedeemPoints(String(maxRedeemableBySettings))
+                  }
+                  className="font-medium text-blue-700 hover:underline"
+                >
+                  Use max
+                </button>
+              </div>
+
+              {selectedRedeemPoints > 0 && (
+                <p className="text-sm font-medium text-green-700">
+                  You will save {money(loyaltyDiscount)} using{" "}
+                  {selectedRedeemPoints.toLocaleString()} points.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="mt-6 space-y-3 text-sm">
+        <SummaryRow label="Subtotal" value={money(subtotal)} />
+        <SummaryRow label="Shipping" value={money(shippingFee)} />
+
+        {selectedRedeemPoints > 0 && (
+          <SummaryRow
+            label="Loyalty discount"
+            value={`-${money(loyaltyDiscount)}`}
+            success
+          />
+        )}
+
+        <div className="flex justify-between border-t border-slate-200 pt-4 text-base">
+          <span className="font-semibold text-slate-950">Total</span>
+          <span className="text-xl font-bold text-slate-950">
+            {money(total)}
+          </span>
+        </div>
+      </div>
+
+      <button
+        onClick={handlePayNow}
+        disabled={paying || cartItems.length === 0}
+        className="mt-6 w-full rounded-2xl bg-blue-600 py-4 font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+      >
+        {paying ? "Redirecting to payment..." : "Proceed to payment →"}
+      </button>
+
+      <p className="mt-4 text-center text-xs text-slate-500">
+        🔒 Payment is securely processed by Paystack.
+      </p>
+    </aside>
+  );
+}
+
+function SummaryRow({
+  label,
+  value,
+  success,
+}: {
+  label: string;
+  value: string;
+  success?: boolean;
+}) {
+  return (
+    <div
+      className={`flex justify-between ${
+        success ? "text-green-700" : "text-slate-600"
+      }`}
+    >
+      <span>{label}</span>
+      <span className="font-medium">{value}</span>
+    </div>
   );
 }

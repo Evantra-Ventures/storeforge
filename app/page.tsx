@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 
 const features = [
@@ -54,7 +55,7 @@ const steps = [
 export default function Home() {
   return (
     <main className="min-h-screen bg-slate-950 text-white">
-      <header className="border-b border-white/10 bg-slate-950/80 backdrop-blur">
+      <header className="sticky top-0 z-50 border-b border-white/10 bg-slate-950/85 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5">
           <Link href="/" className="text-2xl font-bold tracking-tight">
             StoreForge
@@ -64,11 +65,14 @@ export default function Home() {
             <a href="#features" className="hover:text-white">
               Features
             </a>
-            <a href="#how-it-works" className="hover:text-white">
-              How it works
+            <a href="#storefronts" className="hover:text-white">
+              Storefronts
             </a>
-            <a href="#demo-stores" className="hover:text-white">
-              Demo stores
+            <a href="#checkout" className="hover:text-white">
+              Checkout
+            </a>
+            <a href="#engagement" className="hover:text-white">
+              Growth
             </a>
           </nav>
 
@@ -91,7 +95,7 @@ export default function Home() {
       </header>
 
       <section className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.25),transparent_35%),radial-gradient(circle_at_top_left,rgba(168,85,247,0.22),transparent_35%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(37,99,235,0.38),transparent_34%),radial-gradient(circle_at_top_left,rgba(168,85,247,0.22),transparent_34%)]" />
 
         <div className="relative mx-auto grid max-w-7xl grid-cols-1 gap-12 px-6 py-20 lg:grid-cols-2 lg:items-center lg:py-28">
           <div>
@@ -143,47 +147,15 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="rounded-3xl border border-white/10 bg-white/10 p-4 shadow-2xl backdrop-blur">
-            <div className="rounded-2xl bg-white p-5 text-slate-950">
-              <div className="flex items-center justify-between border-b border-slate-200 pb-4">
-                <div>
-                  <p className="text-sm text-slate-500">Store Dashboard</p>
-                  <h2 className="text-xl font-bold">Today’s performance</h2>
-                </div>
-
-                <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700">
-                  Live
-                </span>
-              </div>
-
-              <div className="mt-5 grid grid-cols-2 gap-4">
-                <DashboardCard label="Orders" value="128" />
-                <DashboardCard label="Revenue" value="GHS 9.4k" />
-                <DashboardCard label="Customers" value="642" />
-                <DashboardCard label="Notifications" value="1,204" />
-              </div>
-
-              <div className="mt-5 rounded-2xl bg-slate-50 p-4">
-                <p className="font-semibold">Recent activity</p>
-
-                <div className="mt-4 space-y-3">
-                  <Activity text="Order #A19F marked out for delivery" />
-                  <Activity text="Coupon campaign sent to customers" />
-                  <Activity text="Wishlist price-drop notification queued" />
-                  <Activity text="Low stock alert sent to merchant" />
-                </div>
-              </div>
-
-              <div className="mt-5 rounded-2xl bg-slate-950 p-5 text-white">
-                <p className="text-sm text-slate-300">Next step</p>
-                <p className="mt-1 text-lg font-bold">
-                  Process pending email queue
-                </p>
-                <div className="mt-4 h-2 rounded-full bg-white/10">
-                  <div className="h-2 w-3/4 rounded-full bg-white" />
-                </div>
-              </div>
-            </div>
+          <div className="rounded-[2rem] border border-white/10 bg-white/10 p-3 shadow-2xl backdrop-blur">
+            <Image
+              src="/images/homepage/storeforge-dashboard-hero.png"
+              alt="StoreForge merchant dashboard showing orders, revenue, customers, notifications, and low stock alerts"
+              width={1672}
+              height={941}
+              priority
+              className="h-auto w-full rounded-[1.5rem] shadow-2xl"
+            />
           </div>
         </div>
       </section>
@@ -226,6 +198,133 @@ export default function Home() {
         </div>
       </section>
 
+      <section className="bg-slate-50 py-20 text-slate-950" id="storefronts">
+        <div className="mx-auto max-w-7xl px-6">
+          <div className="grid grid-cols-1 gap-12 lg:grid-cols-2 lg:items-center">
+            <div>
+              <p className="text-sm font-semibold uppercase tracking-wide text-sky-600">
+                Storefront experience
+              </p>
+
+              <h2 className="mt-3 text-4xl font-bold tracking-tight">
+                Give every merchant a fast, beautiful, mobile-friendly store.
+              </h2>
+
+              <p className="mt-4 text-lg leading-8 text-slate-600">
+                Each store gets its own storefront URL, product catalog,
+                categories, cart, checkout, wishlist, notifications, profile,
+                loyalty rewards, and order history.
+              </p>
+
+              <div className="mt-8 flex flex-col gap-4 sm:flex-row">
+                <Link
+                  href="/store/tech-world"
+                  className="rounded-2xl bg-slate-950 px-6 py-4 text-center font-semibold text-white hover:bg-slate-800"
+                >
+                  Visit Tech World
+                </Link>
+
+                <Link
+                  href="/store/fashion-hub"
+                  className="rounded-2xl border border-slate-300 px-6 py-4 text-center font-semibold hover:bg-white"
+                >
+                  Visit Fashion Hub
+                </Link>
+              </div>
+            </div>
+
+            <div className="rounded-[2rem] border border-slate-200 bg-white p-3 shadow-xl">
+              <Image
+                src="/images/homepage/storeforge-storefronts.png"
+                alt="StoreForge storefront demo previews for tech, fashion, and beauty stores"
+                width={1672}
+                height={941}
+                className="h-auto w-full rounded-[1.5rem]"
+              />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="bg-slate-950 py-20 text-white" id="checkout">
+        <div className="mx-auto max-w-7xl px-6">
+          <div className="grid grid-cols-1 gap-12 lg:grid-cols-2 lg:items-center">
+            <div className="order-2 rounded-[2rem] border border-white/10 bg-white/10 p-3 shadow-2xl lg:order-1">
+              <Image
+                src="/images/homepage/storeforge-checkout-payments.png"
+                alt="StoreForge checkout, payments, shipping, coupon, loyalty points, and order tracking interface"
+                width={1672}
+                height={941}
+                className="h-auto w-full rounded-[1.5rem]"
+              />
+            </div>
+
+            <div className="order-1 lg:order-2">
+              <p className="text-sm font-semibold uppercase tracking-wide text-sky-400">
+                Checkout and payments
+              </p>
+
+              <h2 className="mt-3 text-4xl font-bold tracking-tight">
+                Turn browsers into buyers with a smooth checkout flow.
+              </h2>
+
+              <p className="mt-4 text-lg leading-8 text-slate-300">
+                Support delivery or pickup, shipping zones, coupon discounts,
+                loyalty point redemption, secure payment initialization,
+                callbacks, receipts, and order tracking.
+              </p>
+
+              <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <MiniFeature title="Paystack-ready" text="Secure payment flow with callback and webhook support." />
+                <MiniFeature title="Flexible delivery" text="Shipping zones, pickup, delivery status, and order updates." />
+                <MiniFeature title="Coupons & loyalty" text="Discounts, rewards, points, and smarter retention." />
+                <MiniFeature title="Receipts & emails" text="Queue receipts and notifications with Resend." />
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="bg-white py-20 text-slate-950" id="engagement">
+        <div className="mx-auto max-w-7xl px-6">
+          <div className="grid grid-cols-1 gap-12 lg:grid-cols-2 lg:items-center">
+            <div>
+              <p className="text-sm font-semibold uppercase tracking-wide text-sky-600">
+                Customer engagement
+              </p>
+
+              <h2 className="mt-3 text-4xl font-bold tracking-tight">
+                Keep customers coming back with loyalty, wishlists, and smart
+                notifications.
+              </h2>
+
+              <p className="mt-4 text-lg leading-8 text-slate-600">
+                StoreForge helps merchants build repeat purchases with loyalty
+                points, reward balances, wishlist alerts, reviews, coupon
+                campaigns, notification preferences, and email queue processing.
+              </p>
+
+              <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <MiniFeatureLight title="Loyalty rewards" text="Points, rewards, redemptions, and customer value tracking." />
+                <MiniFeatureLight title="Wishlist alerts" text="Back-in-stock and price-drop notifications for saved products." />
+                <MiniFeatureLight title="Campaigns" text="Send coupon and marketing announcements to targeted audiences." />
+                <MiniFeatureLight title="Preferences" text="Customers control what updates and channels they receive." />
+              </div>
+            </div>
+
+            <div className="rounded-[2rem] border border-slate-200 bg-slate-50 p-3 shadow-xl">
+              <Image
+                src="/images/homepage/storeforge-customer-engagement.png"
+                alt="StoreForge customer engagement dashboard for loyalty, reviews, wishlists, campaigns, and notifications"
+                width={1672}
+                height={941}
+                className="h-auto w-full rounded-[1.5rem]"
+              />
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section className="bg-slate-50 py-20 text-slate-950" id="how-it-works">
         <div className="mx-auto max-w-7xl px-6">
           <div className="mx-auto max-w-3xl text-center">
@@ -255,53 +354,6 @@ export default function Home() {
                 </p>
               </div>
             ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="bg-white py-20 text-slate-950" id="demo-stores">
-        <div className="mx-auto max-w-7xl px-6">
-          <div className="grid grid-cols-1 gap-10 lg:grid-cols-2 lg:items-center">
-            <div>
-              <p className="text-sm font-semibold uppercase tracking-wide text-sky-600">
-                Storefront experience
-              </p>
-
-              <h2 className="mt-3 text-4xl font-bold tracking-tight">
-                Give every merchant a fast, clean, mobile-friendly store.
-              </h2>
-
-              <p className="mt-4 text-lg leading-8 text-slate-600">
-                Each store gets its own storefront URL, customer cart, checkout,
-                wishlist, notifications, profile, loyalty rewards, and order
-                history.
-              </p>
-
-              <div className="mt-8 flex flex-col gap-4 sm:flex-row">
-                <Link
-                  href="/store/tech-world"
-                  className="rounded-2xl bg-slate-950 px-6 py-4 text-center font-semibold text-white hover:bg-slate-800"
-                >
-                  Visit Tech World
-                </Link>
-
-                <Link
-                  href="/store/fashion-hub"
-                  className="rounded-2xl border border-slate-300 px-6 py-4 text-center font-semibold hover:bg-slate-50"
-                >
-                  Visit Fashion Hub
-                </Link>
-              </div>
-            </div>
-
-            <div className="rounded-3xl border border-slate-200 bg-slate-50 p-6">
-              <div className="grid grid-cols-2 gap-4">
-                <StoreCard title="Tech World" category="Electronics" />
-                <StoreCard title="Fashion Hub" category="Fashion" />
-                <StoreCard title="Beauty Market" category="Cosmetics" />
-                <StoreCard title="Home Essentials" category="Lifestyle" />
-              </div>
-            </div>
           </div>
         </div>
       </section>
@@ -338,36 +390,20 @@ export default function Home() {
   );
 }
 
-function DashboardCard({ label, value }: { label: string; value: string }) {
+function MiniFeature({ title, text }: { title: string; text: string }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-      <p className="text-sm text-slate-500">{label}</p>
-      <p className="mt-2 text-2xl font-bold">{value}</p>
+    <div className="rounded-2xl border border-white/10 bg-white/10 p-5">
+      <p className="font-semibold text-white">{title}</p>
+      <p className="mt-2 text-sm leading-6 text-slate-300">{text}</p>
     </div>
   );
 }
 
-function Activity({ text }: { text: string }) {
+function MiniFeatureLight({ title, text }: { title: string; text: string }) {
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3">
-      <span className="h-2 w-2 rounded-full bg-green-500" />
-      <p className="text-sm text-slate-700">{text}</p>
-    </div>
-  );
-}
-
-function StoreCard({
-  title,
-  category,
-}: {
-  title: string;
-  category: string;
-}) {
-  return (
-    <div className="rounded-2xl bg-white p-5 shadow-sm">
-      <div className="mb-5 h-24 rounded-2xl bg-gradient-to-br from-slate-200 to-slate-100" />
-      <p className="font-bold">{title}</p>
-      <p className="mt-1 text-sm text-slate-500">{category}</p>
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+      <p className="font-semibold text-slate-950">{title}</p>
+      <p className="mt-2 text-sm leading-6 text-slate-600">{text}</p>
     </div>
   );
 }

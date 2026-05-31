@@ -60,7 +60,7 @@ export default function Sidebar() {
           Loyalty
         </a>
 
-        <a href="/dashboard/marketing/announcements" className="block">
+        <a href="/dashboard/marketing/announcement" className="block">
           Customer Announcements
         </a>
 
@@ -70,7 +70,7 @@ export default function Sidebar() {
         >
           Email Queue
         </a>
-        
+
       </nav>
     </aside>
   );

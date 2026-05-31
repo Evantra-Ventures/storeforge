@@ -152,6 +152,7 @@ export default function StorefrontSettingsPage() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadingField, setUploadingField] = useState<string | null>(null);
 
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
@@ -379,6 +380,129 @@ export default function StorefrontSettingsPage() {
     } as StorefrontSettings);
   };
 
+  const uploadStorefrontAsset = async (
+    file: File,
+    folder: "logo" | "banner" | "hero" | "promo"
+  ) => {
+    if (!tenant || !settings) return;
+
+    try {
+      setUploadingField(folder);
+      setErrorMessage("");
+      setSuccessMessage("");
+
+      if (file.size > 5 * 1024 * 1024) {
+        setErrorMessage("Image is too large. Maximum size is 5MB.");
+        return;
+      }
+
+      if (!file.type.startsWith("image/")) {
+        setErrorMessage("Please upload a valid image file.");
+        return;
+      }
+
+      const fileExt = file.name.split(".").pop()?.toLowerCase() || "png";
+      const safeFileName = `${folder}-${Date.now()}.${fileExt}`;
+      const filePath = `${tenant.id}/${folder}/${safeFileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("storefront-assets")
+        .upload(filePath, file, {
+          cacheControl: "3600",
+          upsert: true,
+        });
+
+      if (uploadError) {
+        setErrorMessage(uploadError.message);
+        return;
+      }
+
+      const { data } = supabase.storage
+        .from("storefront-assets")
+        .getPublicUrl(filePath);
+
+      const publicUrl = data.publicUrl;
+
+      if (!publicUrl) {
+        setErrorMessage("Image uploaded, but public URL was not returned.");
+        return;
+      }
+
+      if (folder === "logo") {
+        const { error } = await supabase
+          .from("tenants")
+          .update({
+            logo_url: publicUrl,
+          })
+          .eq("id", tenant.id);
+
+        if (error) {
+          setErrorMessage(error.message);
+          return;
+        }
+
+        setTenant({
+          ...tenant,
+          logo_url: publicUrl,
+        });
+
+        setSuccessMessage("Store logo uploaded successfully.");
+        return;
+      }
+
+      if (folder === "banner") {
+        const { error } = await supabase
+          .from("tenants")
+          .update({
+            banner_url: publicUrl,
+          })
+          .eq("id", tenant.id);
+
+        if (error) {
+          setErrorMessage(error.message);
+          return;
+        }
+
+        setTenant({
+          ...tenant,
+          banner_url: publicUrl,
+        });
+
+        setSuccessMessage("Store banner uploaded successfully.");
+        return;
+      }
+
+      if (folder === "hero") {
+        setSettings({
+          ...settings,
+          hero_image_url: publicUrl,
+        });
+
+        setSuccessMessage(
+          "Hero image uploaded. Click Save design settings to publish it."
+        );
+        return;
+      }
+
+      if (folder === "promo") {
+        setSettings({
+          ...settings,
+          promotional_banner_url: publicUrl,
+        });
+
+        setSuccessMessage(
+          "Promotional banner uploaded. Click Save design settings to publish it."
+        );
+        return;
+      }
+    } catch (error) {
+      console.error(error);
+      setErrorMessage("Failed to upload image.");
+    } finally {
+      setUploadingField(null);
+    }
+  };
+
   const handleSave = async () => {
     if (!settings || !tenant) return;
 
@@ -479,9 +603,10 @@ export default function StorefrontSettingsPage() {
             </h1>
 
             <p className="mt-5 max-w-3xl text-lg leading-8 text-slate-300">
-              Choose colors, layouts, product card styles, category styles, and
-              storefront sections while StoreForge keeps search, categories,
-              products, cart, checkout, loyalty, and notifications working.
+              Choose colors, layouts, product card styles, category styles,
+              images, and storefront sections while StoreForge keeps search,
+              categories, products, cart, checkout, loyalty, and notifications
+              working.
             </p>
 
             <div className="mt-8 flex flex-col gap-4 sm:flex-row">
@@ -549,6 +674,63 @@ export default function StorefrontSettingsPage() {
                   </p>
                 </button>
               ))}
+            </div>
+          </Panel>
+
+          <Panel
+            title="Store media"
+            description="Upload your logo, banner, hero image, and promotional banner. Logo and banner save immediately. Hero and promo images should be saved with the design settings."
+          >
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+              <UploadCard
+                title="Store logo"
+                description="Shown in your storefront header and store identity areas."
+                imageUrl={tenant.logo_url}
+                uploading={uploadingField === "logo"}
+                onUpload={(file) => uploadStorefrontAsset(file, "logo")}
+              />
+
+              <UploadCard
+                title="Store banner"
+                description="Shown as your main store banner where supported."
+                imageUrl={tenant.banner_url}
+                uploading={uploadingField === "banner"}
+                onUpload={(file) => uploadStorefrontAsset(file, "banner")}
+              />
+
+              <UploadCard
+                title="Hero image"
+                description="Used by the storefront hero and product/category banner areas."
+                imageUrl={settings.hero_image_url}
+                uploading={uploadingField === "hero"}
+                onUpload={(file) => uploadStorefrontAsset(file, "hero")}
+              />
+
+              <UploadCard
+                title="Promotional banner"
+                description="Used for coupon, campaign, or seasonal promotion banners."
+                imageUrl={settings.promotional_banner_url}
+                uploading={uploadingField === "promo"}
+                onUpload={(file) => uploadStorefrontAsset(file, "promo")}
+              />
+            </div>
+
+            <div className="mt-6 grid grid-cols-1 gap-5">
+              <TextField
+                label="Hero image URL"
+                value={settings.hero_image_url || ""}
+                onChange={(value) => updateField("hero_image_url", value)}
+                placeholder="https://..."
+              />
+
+              <TextField
+                label="Promotional banner URL"
+                value={settings.promotional_banner_url || ""}
+                onChange={(value) =>
+                  updateField("promotional_banner_url", value)
+                }
+                placeholder="https://..."
+              />
             </div>
           </Panel>
 
@@ -678,29 +860,6 @@ export default function StorefrontSettingsPage() {
                   }
                 />
               </div>
-            </div>
-          </Panel>
-
-          <Panel
-            title="Optional media"
-            description="Use image URLs for hero or promotional banner images. Later we can add direct upload support."
-          >
-            <div className="grid grid-cols-1 gap-5">
-              <TextField
-                label="Hero image URL"
-                value={settings.hero_image_url || ""}
-                onChange={(value) => updateField("hero_image_url", value)}
-                placeholder="https://..."
-              />
-
-              <TextField
-                label="Promotional banner URL"
-                value={settings.promotional_banner_url || ""}
-                onChange={(value) =>
-                  updateField("promotional_banner_url", value)
-                }
-                placeholder="https://..."
-              />
             </div>
           </Panel>
         </div>
@@ -970,6 +1129,75 @@ function Panel({
 
       {children}
     </section>
+  );
+}
+
+function UploadCard({
+  title,
+  description,
+  imageUrl,
+  uploading,
+  onUpload,
+}: {
+  title: string;
+  description: string;
+  imageUrl: string | null;
+  uploading: boolean;
+  onUpload: (file: File) => void;
+}) {
+  return (
+    <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+      <div className="mb-4 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+        {imageUrl ? (
+          <img
+            src={imageUrl}
+            alt={title}
+            className="h-44 w-full object-cover"
+          />
+        ) : (
+          <div className="flex h-44 w-full items-center justify-center text-sm text-slate-400">
+            No image uploaded
+          </div>
+        )}
+      </div>
+
+      <h3 className="font-bold text-slate-950">{title}</h3>
+
+      <p className="mt-2 text-sm leading-6 text-slate-500">{description}</p>
+
+      <label className="mt-5 block">
+        <input
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/gif"
+          className="hidden"
+          disabled={uploading}
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+
+            if (!file) return;
+
+            if (file.size > 5 * 1024 * 1024) {
+              alert("Image is too large. Maximum size is 5MB.");
+              event.target.value = "";
+              return;
+            }
+
+            onUpload(file);
+            event.target.value = "";
+          }}
+        />
+
+        <span
+          className={`inline-flex w-full justify-center rounded-2xl px-5 py-3 text-sm font-semibold text-white ${
+            uploading
+              ? "cursor-not-allowed bg-slate-400"
+              : "cursor-pointer bg-slate-950 hover:bg-slate-800"
+          }`}
+        >
+          {uploading ? "Uploading..." : "Upload image"}
+        </span>
+      </label>
+    </div>
   );
 }
 

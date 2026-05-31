@@ -15,6 +15,14 @@ type Review = {
   status: string;
 };
 
+type Tenant = {
+  id: string;
+  name: string;
+  slug: string;
+  logo_url: string | null;
+  currency: string | null;
+};
+
 type ProductVariant = {
   id: string;
   product_id: string;
@@ -48,11 +56,22 @@ type Product = {
   variants?: ProductVariant[] | null;
 };
 
+function money(currency: string, amount: number) {
+  return `${currency} ${Number(amount || 0).toFixed(2)}`;
+}
+
+function statusClass(status: string) {
+  if (status === "active") return "bg-green-100 text-green-700";
+  if (status === "draft") return "bg-yellow-100 text-yellow-700";
+  return "bg-slate-100 text-slate-700";
+}
+
 export default function ProductsPage() {
   const supabase = createClient();
 
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [tenant, setTenant] = useState<Tenant | null>(null);
   const [tenantId, setTenantId] = useState<string | null>(null);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [expandedProductId, setExpandedProductId] = useState<string | null>(
@@ -90,6 +109,8 @@ export default function ProductsPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
+  const currency = tenant?.currency || "GHS";
+
   const generateSlug = (value: string) =>
     value
       .toLowerCase()
@@ -122,12 +143,27 @@ export default function ProductsPage() {
     const averageRating =
       reviewCount > 0
         ? publishedReviews.reduce(
-          (acc, review) => acc + Number(review.rating),
-          0
-        ) / reviewCount
+            (acc, review) => acc + Number(review.rating),
+            0
+          ) / reviewCount
         : 0;
 
     return { reviewCount, averageRating };
+  };
+
+  const getLowestProductPrice = (product: Product) => {
+    const activeVariants = (product.variants || []).filter(
+      (variant) => variant.status === "active"
+    );
+
+    if (activeVariants.length === 0) return Number(product.price || 0);
+
+    return Math.min(
+      ...activeVariants.map(
+        (variant) =>
+          Number(product.price || 0) + Number(variant.price_adjustment || 0)
+      )
+    );
   };
 
   const filteredProducts = useMemo(() => {
@@ -155,6 +191,28 @@ export default function ProductsPage() {
   }, [products, searchTerm, filterCategoryId, filterStatus, lowStockOnly]);
 
   const lowStockCount = products.filter(isLowStock).length;
+
+  const activeProducts = products.filter(
+    (product) => product.status === "active"
+  ).length;
+
+  const draftProducts = products.filter(
+    (product) => product.status === "draft"
+  ).length;
+
+  const archivedProducts = products.filter(
+    (product) => product.status === "archived"
+  ).length;
+
+  const totalInventory = products.reduce(
+    (sum, product) => sum + Number(product.inventory || 0),
+    0
+  );
+
+  const totalVariants = products.reduce(
+    (sum, product) => sum + Number(product.variants?.length || 0),
+    0
+  );
 
   const resetForm = () => {
     setEditingProductId(null);
@@ -208,6 +266,14 @@ export default function ProductsPage() {
       if (profileError || !profile?.tenant_id) return;
 
       setTenantId(profile.tenant_id);
+
+      const { data: tenantData } = await supabase
+        .from("tenants")
+        .select("id,name,slug,logo_url,currency")
+        .eq("id", profile.tenant_id)
+        .single();
+
+      setTenant(tenantData || null);
 
       const { data: categoriesData } = await supabase
         .from("categories")
@@ -264,6 +330,7 @@ export default function ProductsPage() {
 
   useEffect(() => {
     fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const validateForm = () => {
@@ -333,6 +400,7 @@ export default function ProductsPage() {
     try {
       setLoading(true);
       setErrorMessage("");
+      setSuccessMessage("");
 
       if (!validateForm()) return;
 
@@ -354,6 +422,7 @@ export default function ProductsPage() {
         return;
       }
 
+      setSuccessMessage("Product created successfully.");
       resetForm();
       fetchData();
     } finally {
@@ -557,7 +626,9 @@ export default function ProductsPage() {
 
       if (!validateForm() || !tenantId) return;
 
-      const previousProduct = products.find((product) => product.id === productId);
+      const previousProduct = products.find(
+        (product) => product.id === productId
+      );
 
       if (!previousProduct) {
         setErrorMessage("Previous product data not found.");
@@ -619,6 +690,7 @@ export default function ProductsPage() {
       return;
     }
 
+    setSuccessMessage("Product deleted successfully.");
     fetchData();
   };
 
@@ -626,6 +698,7 @@ export default function ProductsPage() {
     try {
       setVariantLoading(true);
       setErrorMessage("");
+      setSuccessMessage("");
 
       if (!validateVariantForm()) return;
 
@@ -648,6 +721,7 @@ export default function ProductsPage() {
         return;
       }
 
+      setSuccessMessage("Variant created successfully.");
       resetVariantForm();
       fetchData();
     } finally {
@@ -729,6 +803,7 @@ export default function ProductsPage() {
       return;
     }
 
+    setSuccessMessage("Variant deleted successfully.");
     resetVariantForm();
     fetchData();
   };
@@ -764,174 +839,330 @@ export default function ProductsPage() {
   };
 
   return (
-    <div className="space-y-10">
-      <div>
-        <h1 className="text-3xl font-bold">Products</h1>
-        <p className="text-slate-500 mt-2">
-          Manage products, variants, stock alerts, categories, and reviews.
-        </p>
-      </div>
+    <div className="space-y-8">
+      <section className="relative overflow-hidden rounded-[2rem] bg-slate-950 p-8 text-white shadow-sm">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(37,99,235,0.35),transparent_35%),radial-gradient(circle_at_top_left,rgba(168,85,247,0.22),transparent_35%)]" />
+
+        <div className="relative grid grid-cols-1 gap-8 lg:grid-cols-3 lg:items-center">
+          <div className="lg:col-span-2">
+            <div className="mb-6 inline-flex rounded-full border border-white/10 bg-white/10 px-4 py-2 text-sm text-slate-200">
+              Merchant product center
+            </div>
+
+            <div className="flex items-center gap-4">
+              {tenant?.logo_url ? (
+                <img
+                  src={tenant.logo_url}
+                  alt={tenant.name}
+                  className="h-16 w-16 rounded-2xl border border-white/20 object-cover"
+                />
+              ) : (
+                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white text-2xl font-bold text-slate-950">
+                  {tenant?.name?.slice(0, 1) || "S"}
+                </div>
+              )}
+
+              <div>
+                <p className="text-sm text-slate-300">Catalog management</p>
+                <h1 className="text-4xl font-bold tracking-tight md:text-5xl">
+                  Products
+                </h1>
+              </div>
+            </div>
+
+            <p className="mt-6 max-w-3xl text-lg leading-8 text-slate-300">
+              Manage products, variants, stock alerts, categories, reviews, and
+              wishlist-triggered customer notifications from one polished page.
+            </p>
+
+            <div className="mt-8 flex flex-col gap-4 sm:flex-row">
+              <a
+                href={tenant ? `/store/${tenant.slug}` : "/"}
+                className="rounded-2xl bg-white px-6 py-4 text-center font-semibold text-slate-950 hover:bg-slate-200"
+              >
+                View storefront
+              </a>
+
+              <a
+                href="/categories"
+                className="rounded-2xl border border-white/15 px-6 py-4 text-center font-semibold text-white hover:bg-white/10"
+              >
+                Manage categories
+              </a>
+
+              <a
+                href="/dashboard"
+                className="rounded-2xl border border-white/15 px-6 py-4 text-center font-semibold text-white hover:bg-white/10"
+              >
+                Dashboard overview
+              </a>
+            </div>
+          </div>
+
+          <div className="rounded-[2rem] border border-white/10 bg-white p-4 text-slate-950 shadow-2xl">
+            <div className="rounded-[1.5rem] bg-gradient-to-br from-slate-950 to-blue-950 p-5 text-white">
+              <p className="text-sm text-slate-300">Catalog snapshot</p>
+              <h2 className="mt-2 text-4xl font-bold">{products.length}</h2>
+              <p className="mt-1 text-sm text-slate-300">total product(s)</p>
+
+              <div className="mt-6 space-y-3">
+                <HeroMiniRow label="Active products" value={activeProducts} />
+                <HeroMiniRow label="Draft products" value={draftProducts} />
+                <HeroMiniRow label="Low stock" value={lowStockCount} />
+                <HeroMiniRow label="Variants" value={totalVariants} />
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label="Total products"
+          value={products.length}
+          helper="All catalog items"
+        />
+        <StatCard
+          label="Active"
+          value={activeProducts}
+          helper="Visible on storefront"
+        />
+        <StatCard
+          label="Inventory"
+          value={totalInventory}
+          helper="Base product stock"
+        />
+        <StatCard
+          label="Low stock"
+          value={lowStockCount}
+          helper="Needs attention"
+          danger={lowStockCount > 0}
+        />
+      </section>
 
       {lowStockCount > 0 && (
-        <div className="bg-red-50 border border-red-200 text-red-700 rounded-2xl p-5">
+        <div className="rounded-3xl border border-red-200 bg-red-50 p-5 text-red-700">
           <p className="font-semibold">Low stock alert</p>
-          <p className="text-sm mt-1">
-            {lowStockCount} product(s) are at or below their low stock threshold.
+          <p className="mt-1 text-sm">
+            {lowStockCount} product(s) are at or below their low stock
+            threshold. Update inventory to avoid missed orders.
           </p>
         </div>
       )}
 
-      <div className="bg-white rounded-2xl shadow p-6 space-y-6">
-        <h2 className="text-xl font-semibold">
-          {editingProductId ? "Edit Product" : "Create Product"}
-        </h2>
+      {(errorMessage || successMessage) && (
+        <div className="space-y-3">
+          {errorMessage && (
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700">
+              {errorMessage}
+            </div>
+          )}
 
-        {errorMessage && (
-          <div className="bg-red-100 text-red-700 p-4 rounded-xl">
-            {errorMessage}
-          </div>
-        )}
-
-        {successMessage && (
-          <div className="bg-green-100 text-green-700 p-4 rounded-xl">
-            {successMessage}
-          </div>
-        )}
-
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Product name"
-          className="w-full border rounded-xl p-3"
-        />
-
-        <select
-          value={categoryId}
-          onChange={(e) => setCategoryId(e.target.value)}
-          className="w-full border rounded-xl p-3"
-        >
-          <option value="">No Category</option>
-          {categories.map((category) => (
-            <option key={category.id} value={category.id}>
-              {category.name}
-            </option>
-          ))}
-        </select>
-
-        <textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="Describe your product..."
-          className="w-full border rounded-xl p-3 min-h-[120px]"
-        />
-
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            placeholder="Base price"
-            value={price}
-            onChange={(e) => setPrice(e.target.value)}
-            className="w-full border rounded-xl p-3"
-          />
-
-          <input
-            type="number"
-            min="0"
-            placeholder="Base inventory"
-            value={inventory}
-            onChange={(e) => setInventory(e.target.value)}
-            className="w-full border rounded-xl p-3"
-          />
-
-          <input
-            type="number"
-            min="0"
-            placeholder="Low stock threshold"
-            value={lowStockThreshold}
-            onChange={(e) => setLowStockThreshold(e.target.value)}
-            className="w-full border rounded-xl p-3"
-          />
-
-          <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-            className="w-full border rounded-xl p-3"
-          >
-            <option value="active">Active</option>
-            <option value="draft">Draft</option>
-            <option value="archived">Archived</option>
-          </select>
-        </div>
-
-        {tenantId && (
-          <FileUploader
-            bucket="product-images"
-            tenantId={tenantId}
-            folder="products"
-            label="Upload Product Image"
-            onUploadComplete={(url) => setImageUrl(url)}
-          />
-        )}
-
-        {imageUrl && (
-          <img
-            src={imageUrl}
-            alt="Preview"
-            className="w-40 h-40 object-cover rounded-xl border"
-          />
-        )}
-
-        <div className="flex gap-3">
-          <button
-            onClick={() =>
-              editingProductId
-                ? handleUpdateProduct(editingProductId)
-                : handleCreateProduct()
-            }
-            disabled={loading}
-            className="bg-black text-white px-6 py-3 rounded-xl font-medium disabled:opacity-50"
-          >
-            {loading
-              ? "Saving..."
-              : editingProductId
-                ? "Update Product"
-                : "Create Product"}
-          </button>
-
-          {editingProductId && (
-            <button onClick={resetForm} className="border px-6 py-3 rounded-xl">
-              Cancel
-            </button>
+          {successMessage && (
+            <div className="rounded-2xl border border-green-200 bg-green-50 p-4 text-green-700">
+              {successMessage}
+            </div>
           )}
         </div>
-      </div>
+      )}
 
-      <div className="bg-white rounded-2xl shadow p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold">Filter Products</h2>
+      <section className="grid grid-cols-1 gap-8 xl:grid-cols-3">
+        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm xl:col-span-2">
+          <div className="mb-6">
+            <p className="text-sm font-semibold uppercase tracking-wide text-blue-600">
+              Product editor
+            </p>
+            <h2 className="mt-2 text-2xl font-bold">
+              {editingProductId ? "Edit product" : "Create product"}
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Add product details, pricing, inventory, image, category, and
+              storefront status.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-5">
+            <InputField
+              label="Product name"
+              value={name}
+              onChange={setName}
+              placeholder="Product name"
+            />
+
+            <SelectField
+              label="Category"
+              value={categoryId}
+              onChange={setCategoryId}
+              options={[
+                { label: "No Category", value: "" },
+                ...categories.map((category) => ({
+                  label: category.name,
+                  value: category.id,
+                })),
+              ]}
+            />
+
+            <TextAreaField
+              label="Description"
+              value={description}
+              onChange={setDescription}
+              placeholder="Describe your product..."
+            />
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+              <InputField
+                label="Base price"
+                type="number"
+                value={price}
+                onChange={setPrice}
+                placeholder="0.00"
+              />
+
+              <InputField
+                label="Base inventory"
+                type="number"
+                value={inventory}
+                onChange={setInventory}
+                placeholder="0"
+              />
+
+              <InputField
+                label="Low stock threshold"
+                type="number"
+                value={lowStockThreshold}
+                onChange={setLowStockThreshold}
+                placeholder="5"
+              />
+
+              <SelectField
+                label="Status"
+                value={status}
+                onChange={setStatus}
+                options={[
+                  { label: "Active", value: "active" },
+                  { label: "Draft", value: "draft" },
+                  { label: "Archived", value: "archived" },
+                ]}
+              />
+            </div>
+
+            {tenantId && (
+              <FileUploader
+                bucket="product-images"
+                tenantId={tenantId}
+                folder="products"
+                label="Upload Product Image"
+                onUploadComplete={(url) => setImageUrl(url)}
+              />
+            )}
+
+            {imageUrl && (
+              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                <img
+                  src={imageUrl}
+                  alt="Preview"
+                  className="h-40 w-40 rounded-xl object-cover"
+                />
+              </div>
+            )}
+
+            <div className="flex flex-wrap gap-3">
+              <button
+                onClick={() =>
+                  editingProductId
+                    ? handleUpdateProduct(editingProductId)
+                    : handleCreateProduct()
+                }
+                disabled={loading}
+                className="rounded-2xl bg-slate-950 px-6 py-3 font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+              >
+                {loading
+                  ? "Saving..."
+                  : editingProductId
+                  ? "Update Product"
+                  : "Create Product"}
+              </button>
+
+              {editingProductId && (
+                <button
+                  onClick={resetForm}
+                  className="rounded-2xl border border-slate-200 px-6 py-3 font-semibold hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <aside className="space-y-8">
+          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <p className="text-sm font-semibold uppercase tracking-wide text-purple-600">
+              Quick insights
+            </p>
+            <h2 className="mt-2 text-2xl font-bold">Catalog health</h2>
+
+            <div className="mt-6 space-y-3">
+              <MiniRow label="Active products" value={activeProducts} />
+              <MiniRow label="Draft products" value={draftProducts} />
+              <MiniRow label="Archived products" value={archivedProducts} />
+              <MiniRow label="Total variants" value={totalVariants} />
+              <MiniRow label="Low stock products" value={lowStockCount} />
+            </div>
+          </div>
+
+          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <p className="text-sm font-semibold uppercase tracking-wide text-orange-600">
+              Storefront
+            </p>
+            <h2 className="mt-2 text-2xl font-bold">Preview products</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              Open your public store to confirm how products appear to
+              customers.
+            </p>
+
+            <a
+              href={tenant ? `/store/${tenant.slug}` : "/"}
+              className="mt-5 block rounded-2xl bg-slate-950 px-5 py-3 text-center text-sm font-semibold text-white hover:bg-slate-800"
+            >
+              Open storefront
+            </a>
+          </div>
+        </aside>
+      </section>
+
+      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-wide text-blue-600">
+              Filters
+            </p>
+            <h2 className="mt-2 text-2xl font-bold">Find products quickly</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Search, filter by category, status, or show only low-stock items.
+            </p>
+          </div>
 
           <button
             onClick={resetFilters}
-            className="border px-4 py-2 rounded-xl text-sm hover:bg-slate-100"
+            className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold hover:bg-slate-50"
           >
-            Reset Filters
+            Reset filters
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
           <input
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Search products..."
-            className="border rounded-xl p-3"
+            className="field-input"
           />
 
           <select
             value={filterCategoryId}
             onChange={(e) => setFilterCategoryId(e.target.value)}
-            className="border rounded-xl p-3"
+            className="field-input"
           >
             <option value="">All Categories</option>
             {categories.map((category) => (
@@ -944,7 +1175,7 @@ export default function ProductsPage() {
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
-            className="border rounded-xl p-3"
+            className="field-input"
           >
             <option value="">All Statuses</option>
             <option value="active">Active</option>
@@ -952,284 +1183,219 @@ export default function ProductsPage() {
             <option value="archived">Archived</option>
           </select>
 
-          <label className="border rounded-xl p-3 flex items-center gap-2">
+          <label className="flex items-center gap-2 rounded-2xl border border-slate-200 px-4 py-3">
             <input
               type="checkbox"
               checked={lowStockOnly}
               onChange={(e) => setLowStockOnly(e.target.checked)}
             />
-            Low stock only
+            <span className="text-sm font-medium">Low stock only</span>
           </label>
         </div>
-      </div>
+      </section>
 
-      <div className="bg-white rounded-2xl shadow p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-semibold">Your Products</h2>
-          <span className="text-sm text-slate-500">
-            {filteredProducts.length} Product(s)
-          </span>
+      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="mb-6 flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-wide text-blue-600">
+              Products
+            </p>
+            <h2 className="mt-2 text-2xl font-bold">Your products</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              {filteredProducts.length} product(s) match your current filters.
+            </p>
+          </div>
         </div>
 
         {fetching ? (
-          <p className="text-slate-500">Loading products...</p>
+          <EmptyState text="Loading products..." />
         ) : filteredProducts.length === 0 ? (
-          <p className="text-slate-500 text-center py-12">No products found.</p>
+          <EmptyState text="No products found." />
         ) : (
           <div className="space-y-5">
             {filteredProducts.map((product) => {
               const category = getProductCategory(product);
               const variants = getProductVariants(product);
               const { reviewCount, averageRating } = getReviewStats(product);
+              const lowestPrice = getLowestProductPrice(product);
 
               return (
-                <div key={product.id} className="border rounded-2xl p-4">
-                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                    <div className="flex items-center gap-4">
-                      <div className="w-20 h-20 bg-slate-100 rounded-xl overflow-hidden flex items-center justify-center">
+                <div
+                  key={product.id}
+                  className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm"
+                >
+                  <div className="flex flex-col gap-5 p-5 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="flex flex-col gap-4 sm:flex-row">
+                      <div className="flex h-28 w-full items-center justify-center overflow-hidden rounded-2xl bg-slate-100 sm:w-28">
                         {product.image_url ? (
                           <img
                             src={product.image_url}
                             alt={product.name}
-                            className="w-full h-full object-cover"
+                            className="h-full w-full object-cover"
                           />
                         ) : (
                           <span className="text-xs text-slate-400">
-                            No Image
+                            No image
                           </span>
                         )}
                       </div>
 
-                      <div>
-                        <h3 className="font-semibold text-lg">
-                          {product.name}
-                        </h3>
-
-                        <p className="text-sm text-slate-500">
-                          {product.description || "No description"}
-                        </p>
-
-                        <div className="flex items-center gap-2 mt-2 flex-wrap">
-                          <span className="bg-slate-100 px-2 py-1 rounded-md text-xs capitalize">
+                      <div className="max-w-2xl">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span
+                            className={`rounded-full px-3 py-1 text-xs font-semibold capitalize ${statusClass(
+                              product.status
+                            )}`}
+                          >
                             {product.status}
                           </span>
 
                           {category && (
-                            <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded-md text-xs">
+                            <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-700">
                               {category.name}
                             </span>
                           )}
 
                           {isLowStock(product) && (
-                            <span className="bg-red-100 text-red-700 px-2 py-1 rounded-md text-xs">
+                            <span className="rounded-full bg-red-100 px-3 py-1 text-xs font-medium text-red-700">
                               Low stock
                             </span>
                           )}
 
-                          <span className="bg-purple-100 text-purple-700 px-2 py-1 rounded-md text-xs">
+                          <span className="rounded-full bg-purple-100 px-3 py-1 text-xs font-medium text-purple-700">
                             {variants.length} variant(s)
                           </span>
 
-                          <span className="bg-yellow-100 text-yellow-700 px-2 py-1 rounded-md text-xs">
+                          <span className="rounded-full bg-yellow-100 px-3 py-1 text-xs font-medium text-yellow-700">
                             ⭐{" "}
                             {reviewCount > 0
                               ? `${averageRating.toFixed(1)} (${reviewCount})`
                               : "No reviews"}
                           </span>
                         </div>
+
+                        <h3 className="mt-3 text-xl font-bold text-slate-950">
+                          {product.name}
+                        </h3>
+
+                        <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-500">
+                          {product.description || "No description"}
+                        </p>
+
+                        <div className="mt-4 grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
+                          <MiniMetric
+                            label="Price"
+                            value={money(currency, lowestPrice)}
+                          />
+                          <MiniMetric
+                            label="Base stock"
+                            value={product.inventory}
+                          />
+                          <MiniMetric
+                            label="Threshold"
+                            value={product.low_stock_threshold || 5}
+                          />
+                          <MiniMetric
+                            label="Created"
+                            value={new Date(
+                              product.created_at
+                            ).toLocaleDateString()}
+                          />
+                        </div>
                       </div>
                     </div>
 
-                    <div className="text-right">
-                      <p className="text-2xl font-bold">
-                        ${Number(product.price).toFixed(2)}
-                      </p>
-
-                      <p className="text-sm text-slate-500 mt-1">
-                        Stock: {product.inventory}
-                      </p>
-
-                      <div className="flex gap-2 mt-4 justify-end flex-wrap">
-                        <button
-                          onClick={() =>
-                            setExpandedProductId(
-                              expandedProductId === product.id
-                                ? null
-                                : product.id
-                            )
-                          }
-                          className="px-4 py-2 rounded-lg border text-sm hover:bg-slate-100"
+                    <div className="flex flex-wrap gap-2 lg:justify-end">
+                      {tenant && (
+                        <a
+                          href={`/store/${tenant.slug}/products/${product.id}`}
+                          target="_blank"
+                          className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium hover:bg-slate-50"
                         >
-                          {expandedProductId === product.id
-                            ? "Hide Variants"
-                            : "Manage Variants"}
-                        </button>
+                          Preview
+                        </a>
+                      )}
 
-                        <button
-                          onClick={() => handleEditClick(product)}
-                          className="px-4 py-2 rounded-lg border text-sm hover:bg-slate-100"
-                        >
-                          Edit
-                        </button>
+                      <button
+                        onClick={() =>
+                          setExpandedProductId(
+                            expandedProductId === product.id
+                              ? null
+                              : product.id
+                          )
+                        }
+                        className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium hover:bg-slate-50"
+                      >
+                        {expandedProductId === product.id
+                          ? "Hide variants"
+                          : "Manage variants"}
+                      </button>
 
-                        <button
-                          onClick={() => handleDeleteProduct(product.id)}
-                          className="px-4 py-2 rounded-lg bg-red-500 text-white text-sm hover:bg-red-600"
-                        >
-                          Delete
-                        </button>
-                      </div>
+                      <button
+                        onClick={() => handleEditClick(product)}
+                        className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium hover:bg-slate-50"
+                      >
+                        Edit
+                      </button>
+
+                      <button
+                        onClick={() => handleDeleteProduct(product.id)}
+                        className="rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+                      >
+                        Delete
+                      </button>
                     </div>
                   </div>
 
                   {expandedProductId === product.id && (
-                    <div className="mt-6 border-t pt-6 space-y-6">
-                      <div className="bg-slate-50 rounded-2xl p-5 space-y-4">
-                        <h3 className="font-semibold">
-                          {editingVariantId ? "Edit Variant" : "Create Variant"}
-                        </h3>
-
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                          <input
-                            value={variantName}
-                            onChange={(e) => setVariantName(e.target.value)}
-                            placeholder="Variant name e.g. Black / Large"
-                            className="border rounded-xl p-3"
-                          />
-
-                          <input
-                            value={variantSku}
-                            onChange={(e) => setVariantSku(e.target.value)}
-                            placeholder="SKU optional"
-                            className="border rounded-xl p-3"
-                          />
-
-                          <input
-                            value={variantOptionName}
-                            onChange={(e) =>
-                              setVariantOptionName(e.target.value)
-                            }
-                            placeholder="Option name e.g. Size"
-                            className="border rounded-xl p-3"
-                          />
-
-                          <input
-                            value={variantOptionValue}
-                            onChange={(e) =>
-                              setVariantOptionValue(e.target.value)
-                            }
-                            placeholder="Option value e.g. XL"
-                            className="border rounded-xl p-3"
-                          />
-
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={variantPriceAdjustment}
-                            onChange={(e) =>
-                              setVariantPriceAdjustment(e.target.value)
-                            }
-                            placeholder="Price adjustment"
-                            className="border rounded-xl p-3"
-                          />
-
-                          <input
-                            type="number"
-                            min="0"
-                            value={variantInventory}
-                            onChange={(e) =>
-                              setVariantInventory(e.target.value)
-                            }
-                            placeholder="Variant inventory"
-                            className="border rounded-xl p-3"
-                          />
-
-                          <input
-                            type="number"
-                            min="0"
-                            value={variantLowStockThreshold}
-                            onChange={(e) =>
-                              setVariantLowStockThreshold(e.target.value)
-                            }
-                            placeholder="Low stock threshold"
-                            className="border rounded-xl p-3"
-                          />
-
-                          <select
-                            value={variantStatus}
-                            onChange={(e) => setVariantStatus(e.target.value)}
-                            className="border rounded-xl p-3"
-                          >
-                            <option value="active">Active</option>
-                            <option value="draft">Draft</option>
-                            <option value="archived">Archived</option>
-                          </select>
-                        </div>
-
-                        {tenantId && (
-                          <FileUploader
-                            bucket="product-images"
-                            tenantId={tenantId}
-                            folder="variants"
-                            label="Upload Variant Image"
-                            onUploadComplete={(url) => setVariantImageUrl(url)}
-                          />
-                        )}
-
-                        {variantImageUrl && (
-                          <img
-                            src={variantImageUrl}
-                            alt="Variant preview"
-                            className="w-28 h-28 object-cover rounded-xl border"
-                          />
-                        )}
-
-                        <div className="flex gap-3">
-                          <button
-                            onClick={
-                              editingVariantId
-                                ? handleUpdateVariant
-                                : handleCreateVariant
-                            }
-                            disabled={variantLoading}
-                            className="bg-black text-white px-5 py-3 rounded-xl text-sm disabled:opacity-50"
-                          >
-                            {variantLoading
-                              ? "Saving..."
-                              : editingVariantId
-                                ? "Update Variant"
-                                : "Create Variant"}
-                          </button>
-
-                          {editingVariantId && (
-                            <button
-                              onClick={resetVariantForm}
-                              className="border px-5 py-3 rounded-xl text-sm"
-                            >
-                              Cancel Edit
-                            </button>
-                          )}
-                        </div>
-                      </div>
+                    <div className="border-t border-slate-100 bg-slate-50/60 p-5">
+                      <VariantManager
+                        tenantId={tenantId}
+                        variantName={variantName}
+                        setVariantName={setVariantName}
+                        variantSku={variantSku}
+                        setVariantSku={setVariantSku}
+                        variantOptionName={variantOptionName}
+                        setVariantOptionName={setVariantOptionName}
+                        variantOptionValue={variantOptionValue}
+                        setVariantOptionValue={setVariantOptionValue}
+                        variantPriceAdjustment={variantPriceAdjustment}
+                        setVariantPriceAdjustment={setVariantPriceAdjustment}
+                        variantInventory={variantInventory}
+                        setVariantInventory={setVariantInventory}
+                        variantLowStockThreshold={variantLowStockThreshold}
+                        setVariantLowStockThreshold={
+                          setVariantLowStockThreshold
+                        }
+                        variantStatus={variantStatus}
+                        setVariantStatus={setVariantStatus}
+                        variantImageUrl={variantImageUrl}
+                        setVariantImageUrl={setVariantImageUrl}
+                        editingVariantId={editingVariantId}
+                        variantLoading={variantLoading}
+                        handleCreateVariant={handleCreateVariant}
+                        handleUpdateVariant={handleUpdateVariant}
+                        resetVariantForm={resetVariantForm}
+                      />
 
                       {variants.length === 0 ? (
-                        <p className="text-sm text-slate-500">
+                        <p className="mt-5 text-sm text-slate-500">
                           No variants yet.
                         </p>
                       ) : (
-                        <div className="space-y-3">
+                        <div className="mt-5 space-y-3">
                           {variants.map((variant) => (
                             <div
                               key={variant.id}
-                              className="border rounded-2xl p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4"
+                              className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-4 md:flex-row md:items-center md:justify-between"
                             >
                               <div className="flex items-center gap-4">
-                                <div className="w-16 h-16 bg-slate-100 rounded-xl overflow-hidden flex items-center justify-center">
+                                <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-xl bg-slate-100">
                                   {variant.image_url ? (
                                     <img
                                       src={variant.image_url}
                                       alt={variant.name}
-                                      className="w-full h-full object-cover"
+                                      className="h-full w-full object-cover"
                                     />
                                   ) : (
                                     <span className="text-xs text-slate-400">
@@ -1239,7 +1405,7 @@ export default function ProductsPage() {
                                 </div>
 
                                 <div>
-                                  <h4 className="font-semibold">
+                                  <h4 className="font-semibold text-slate-950">
                                     {variant.name}
                                   </h4>
 
@@ -1248,19 +1414,23 @@ export default function ProductsPage() {
                                     {variant.option_value}
                                   </p>
 
-                                  <div className="flex gap-2 mt-2 flex-wrap">
-                                    <span className="bg-slate-100 px-2 py-1 rounded-md text-xs capitalize">
+                                  <div className="mt-2 flex flex-wrap gap-2">
+                                    <span
+                                      className={`rounded-full px-2 py-1 text-xs capitalize ${statusClass(
+                                        variant.status
+                                      )}`}
+                                    >
                                       {variant.status}
                                     </span>
 
                                     {variant.sku && (
-                                      <span className="text-xs text-slate-500">
+                                      <span className="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-500">
                                         SKU: {variant.sku}
                                       </span>
                                     )}
 
                                     {isVariantLowStock(variant) && (
-                                      <span className="bg-red-100 text-red-700 px-2 py-1 rounded-md text-xs">
+                                      <span className="rounded-full bg-red-100 px-2 py-1 text-xs text-red-700">
                                         Low stock
                                       </span>
                                     )}
@@ -1268,24 +1438,25 @@ export default function ProductsPage() {
                                 </div>
                               </div>
 
-                              <div className="text-right">
-                                <p className="font-bold">
-                                  Adjustment: $
-                                  {Number(
-                                    variant.price_adjustment || 0
-                                  ).toFixed(2)}
+                              <div className="text-left md:text-right">
+                                <p className="font-bold text-slate-950">
+                                  Adjustment:{" "}
+                                  {money(
+                                    currency,
+                                    Number(variant.price_adjustment || 0)
+                                  )}
                                 </p>
 
                                 <p className="text-sm text-slate-500">
                                   Stock: {variant.inventory}
                                 </p>
 
-                                <div className="flex gap-2 mt-3 justify-end">
+                                <div className="mt-3 flex gap-2 md:justify-end">
                                   <button
                                     onClick={() =>
                                       handleEditVariantClick(variant)
                                     }
-                                    className="border px-3 py-2 rounded-lg text-sm"
+                                    className="rounded-xl border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50"
                                   >
                                     Edit
                                   </button>
@@ -1294,7 +1465,7 @@ export default function ProductsPage() {
                                     onClick={() =>
                                       handleDeleteVariant(variant.id)
                                     }
-                                    className="bg-red-500 text-white px-3 py-2 rounded-lg text-sm"
+                                    className="rounded-xl bg-red-600 px-3 py-2 text-sm text-white hover:bg-red-700"
                                   >
                                     Delete
                                   </button>
@@ -1311,7 +1482,361 @@ export default function ProductsPage() {
             })}
           </div>
         )}
+      </section>
+    </div>
+  );
+}
+
+function VariantManager({
+  tenantId,
+  variantName,
+  setVariantName,
+  variantSku,
+  setVariantSku,
+  variantOptionName,
+  setVariantOptionName,
+  variantOptionValue,
+  setVariantOptionValue,
+  variantPriceAdjustment,
+  setVariantPriceAdjustment,
+  variantInventory,
+  setVariantInventory,
+  variantLowStockThreshold,
+  setVariantLowStockThreshold,
+  variantStatus,
+  setVariantStatus,
+  variantImageUrl,
+  setVariantImageUrl,
+  editingVariantId,
+  variantLoading,
+  handleCreateVariant,
+  handleUpdateVariant,
+  resetVariantForm,
+}: {
+  tenantId: string | null;
+  variantName: string;
+  setVariantName: (value: string) => void;
+  variantSku: string;
+  setVariantSku: (value: string) => void;
+  variantOptionName: string;
+  setVariantOptionName: (value: string) => void;
+  variantOptionValue: string;
+  setVariantOptionValue: (value: string) => void;
+  variantPriceAdjustment: string;
+  setVariantPriceAdjustment: (value: string) => void;
+  variantInventory: string;
+  setVariantInventory: (value: string) => void;
+  variantLowStockThreshold: string;
+  setVariantLowStockThreshold: (value: string) => void;
+  variantStatus: string;
+  setVariantStatus: (value: string) => void;
+  variantImageUrl: string;
+  setVariantImageUrl: (value: string) => void;
+  editingVariantId: string | null;
+  variantLoading: boolean;
+  handleCreateVariant: () => void;
+  handleUpdateVariant: () => void;
+  resetVariantForm: () => void;
+}) {
+  return (
+    <div className="rounded-3xl border border-slate-200 bg-white p-5">
+      <h3 className="text-xl font-bold text-slate-950">
+        {editingVariantId ? "Edit variant" : "Create variant"}
+      </h3>
+
+      <p className="mt-1 text-sm text-slate-500">
+        Add sizes, colors, SKUs, stock levels, image overrides, and price
+        adjustments.
+      </p>
+
+      <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-4">
+        <InputField
+          label="Variant name"
+          value={variantName}
+          onChange={setVariantName}
+          placeholder="Black / Large"
+        />
+
+        <InputField
+          label="SKU"
+          value={variantSku}
+          onChange={setVariantSku}
+          placeholder="Optional"
+        />
+
+        <InputField
+          label="Option name"
+          value={variantOptionName}
+          onChange={setVariantOptionName}
+          placeholder="Size"
+        />
+
+        <InputField
+          label="Option value"
+          value={variantOptionValue}
+          onChange={setVariantOptionValue}
+          placeholder="XL"
+        />
+
+        <InputField
+          label="Price adjustment"
+          type="number"
+          value={variantPriceAdjustment}
+          onChange={setVariantPriceAdjustment}
+          placeholder="0.00"
+        />
+
+        <InputField
+          label="Variant inventory"
+          type="number"
+          value={variantInventory}
+          onChange={setVariantInventory}
+          placeholder="0"
+        />
+
+        <InputField
+          label="Low stock threshold"
+          type="number"
+          value={variantLowStockThreshold}
+          onChange={setVariantLowStockThreshold}
+          placeholder="5"
+        />
+
+        <SelectField
+          label="Status"
+          value={variantStatus}
+          onChange={setVariantStatus}
+          options={[
+            { label: "Active", value: "active" },
+            { label: "Draft", value: "draft" },
+            { label: "Archived", value: "archived" },
+          ]}
+        />
       </div>
+
+      <div className="mt-5">
+        {tenantId && (
+          <FileUploader
+            bucket="product-images"
+            tenantId={tenantId}
+            folder="variants"
+            label="Upload Variant Image"
+            onUploadComplete={(url) => setVariantImageUrl(url)}
+          />
+        )}
+
+        {variantImageUrl && (
+          <img
+            src={variantImageUrl}
+            alt="Variant preview"
+            className="mt-4 h-28 w-28 rounded-xl border object-cover"
+          />
+        )}
+      </div>
+
+      <div className="mt-5 flex flex-wrap gap-3">
+        <button
+          onClick={editingVariantId ? handleUpdateVariant : handleCreateVariant}
+          disabled={variantLoading}
+          className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+        >
+          {variantLoading
+            ? "Saving..."
+            : editingVariantId
+            ? "Update Variant"
+            : "Create Variant"}
+        </button>
+
+        {editingVariantId && (
+          <button
+            onClick={resetVariantForm}
+            className="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-semibold hover:bg-slate-50"
+          >
+            Cancel Edit
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function InputField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  type = "text",
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  type?: string;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-2 block text-sm font-medium text-slate-700">
+        {label}
+      </span>
+
+      <input
+        type={type}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="field-input"
+      />
+    </label>
+  );
+}
+
+function TextAreaField({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-2 block text-sm font-medium text-slate-700">
+        {label}
+      </span>
+
+      <textarea
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="field-input min-h-[130px]"
+      />
+    </label>
+  );
+}
+
+function SelectField({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: {
+    value: string;
+    label: string;
+  }[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-2 block text-sm font-medium text-slate-700">
+        {label}
+      </span>
+
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="field-input"
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  helper,
+  danger,
+}: {
+  label: string;
+  value: string | number;
+  helper: string;
+  danger?: boolean;
+}) {
+  return (
+    <div
+      className={`rounded-3xl border p-6 shadow-sm ${
+        danger
+          ? "border-red-200 bg-red-50"
+          : "border-slate-200 bg-white"
+      }`}
+    >
+      <p className={danger ? "text-sm text-red-600" : "text-sm text-slate-500"}>
+        {label}
+      </p>
+      <h2
+        className={`mt-3 text-3xl font-bold tracking-tight ${
+          danger ? "text-red-700" : "text-slate-950"
+        }`}
+      >
+        {value}
+      </h2>
+      <p className={danger ? "mt-2 text-sm text-red-500" : "mt-2 text-sm text-slate-400"}>
+        {helper}
+      </p>
+    </div>
+  );
+}
+
+function HeroMiniRow({
+  label,
+  value,
+}: {
+  label: string;
+  value: string | number;
+}) {
+  return (
+    <div className="flex items-center justify-between rounded-2xl bg-white/10 px-4 py-3">
+      <span className="text-sm text-slate-300">{label}</span>
+      <span className="font-bold">{value}</span>
+    </div>
+  );
+}
+
+function MiniRow({
+  label,
+  value,
+}: {
+  label: string;
+  value: string | number;
+}) {
+  return (
+    <div className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
+      <span className="text-sm text-slate-500">{label}</span>
+      <span className="font-bold text-slate-950">{value}</span>
+    </div>
+  );
+}
+
+function MiniMetric({
+  label,
+  value,
+}: {
+  label: string;
+  value: string | number;
+}) {
+  return (
+    <div className="rounded-2xl bg-slate-50 p-3">
+      <p className="text-xs text-slate-500">{label}</p>
+      <p className="mt-1 font-bold text-slate-950">{value}</p>
+    </div>
+  );
+}
+
+function EmptyState({ text }: { text: string }) {
+  return (
+    <div className="rounded-2xl bg-slate-50 p-10 text-center text-sm text-slate-500">
+      {text}
     </div>
   );
 }

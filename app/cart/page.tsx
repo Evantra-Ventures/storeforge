@@ -10,7 +10,39 @@ type Tenant = {
   name: string;
   slug: string;
   logo_url: string | null;
+  banner_url: string | null;
   currency: string | null;
+};
+
+type StorefrontSettings = {
+  id: string;
+  tenant_id: string;
+  theme_preset: string;
+  primary_color: string;
+  accent_color: string;
+  background_color: string;
+  text_color: string;
+  hero_layout: string;
+  product_card_style: string;
+  category_style: string;
+  button_style: string;
+  show_search: boolean;
+  show_categories: boolean;
+  show_featured_products: boolean;
+  show_trust_cards: boolean;
+  show_reviews_section: boolean;
+  show_loyalty_banner: boolean;
+  show_coupon_banner: boolean;
+  hero_badge: string | null;
+  hero_heading: string | null;
+  hero_subheading: string | null;
+  featured_section_title: string | null;
+  featured_section_subtitle: string | null;
+  products_section_title: string | null;
+  products_section_subtitle: string | null;
+  hero_image_url: string | null;
+  promotional_banner_url: string | null;
+  status: string;
 };
 
 type CartItem = {
@@ -37,6 +69,44 @@ type CartItem = {
   } | null;
 };
 
+const defaultStorefrontSettings: StorefrontSettings = {
+  id: "default",
+  tenant_id: "default",
+  theme_preset: "modern_dark",
+  primary_color: "#020617",
+  accent_color: "#2563eb",
+  background_color: "#f8fafc",
+  text_color: "#0f172a",
+  hero_layout: "split",
+  product_card_style: "rounded",
+  category_style: "pills",
+  button_style: "rounded",
+  show_search: true,
+  show_categories: true,
+  show_featured_products: true,
+  show_trust_cards: true,
+  show_reviews_section: true,
+  show_loyalty_banner: true,
+  show_coupon_banner: true,
+  hero_badge: "Live store · Powered by StoreForge",
+  hero_heading: null,
+  hero_subheading: null,
+  featured_section_title: "Popular right now",
+  featured_section_subtitle: "Explore featured products from this store.",
+  products_section_title: "Shop products",
+  products_section_subtitle: "Browse products, options, and collections.",
+  hero_image_url: null,
+  promotional_banner_url: null,
+  status: "active",
+};
+
+function getButtonClass(buttonStyle: string) {
+  if (buttonStyle === "pill") return "rounded-full";
+  if (buttonStyle === "sharp") return "rounded-none";
+  if (buttonStyle === "soft") return "rounded-xl";
+  return "rounded-2xl";
+}
+
 export default function CartPage() {
   const supabase = createClient();
   const params = useParams();
@@ -45,9 +115,11 @@ export default function CartPage() {
   const slug = params.slug as string;
 
   const [tenant, setTenant] = useState<Tenant | null>(null);
+  const [storefrontSettings, setStorefrontSettings] =
+    useState<StorefrontSettings>(defaultStorefrontSettings);
+
   const [cartId, setCartId] = useState<string | null>(null);
   const [items, setItems] = useState<CartItem[]>([]);
-  
 
   const [loading, setLoading] = useState(true);
   const [updatingItemId, setUpdatingItemId] = useState<string | null>(null);
@@ -85,7 +157,7 @@ export default function CartPage() {
 
       const { data: tenantData, error: tenantError } = await supabase
         .from("tenants")
-        .select("id,name,slug,logo_url,currency")
+        .select("id,name,slug,logo_url,banner_url,currency")
         .eq("slug", slug)
         .single();
 
@@ -95,6 +167,22 @@ export default function CartPage() {
       }
 
       setTenant(tenantData);
+
+      await supabase.rpc("ensure_storefront_settings", {
+        p_tenant_id: tenantData.id,
+      });
+
+      const { data: settingsData } = await supabase
+        .from("storefront_settings")
+        .select("*")
+        .eq("tenant_id", tenantData.id)
+        .eq("status", "active")
+        .maybeSingle();
+
+      setStorefrontSettings({
+        ...defaultStorefrontSettings,
+        ...(settingsData || {}),
+      });
 
       const { data: cart, error: cartError } = await supabase
         .from("carts")
@@ -272,18 +360,26 @@ export default function CartPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <p className="text-slate-500">Loading cart...</p>
+      <div
+        className="flex min-h-screen items-center justify-center"
+        style={{
+          backgroundColor: storefrontSettings.background_color,
+          color: storefrontSettings.text_color,
+        }}
+      >
+        <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
+          <p className="text-slate-500">Loading cart...</p>
+        </div>
       </div>
     );
   }
 
   if (!tenant) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center px-6">
-        <div className="bg-white rounded-2xl shadow p-8 text-center max-w-md">
+      <div className="flex min-h-screen items-center justify-center px-6 bg-slate-50">
+        <div className="max-w-md rounded-3xl bg-white p-8 text-center shadow-sm">
           <h1 className="text-2xl font-bold">Store not found</h1>
-          <p className="text-slate-500 mt-2">
+          <p className="mt-2 text-slate-500">
             This cart page could not find the store.
           </p>
         </div>
@@ -292,111 +388,96 @@ export default function CartPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="bg-white border-b sticky top-0 z-20">
-        <div className="max-w-7xl mx-auto px-6 py-5 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
-          <a href={`/store/${tenant.slug}`} className="flex items-center gap-4">
-            {tenant.logo_url ? (
-              <img
-                src={tenant.logo_url}
-                alt={tenant.name}
-                className="w-12 h-12 rounded-xl object-cover border"
-              />
-            ) : (
-              <div className="w-12 h-12 rounded-xl bg-slate-200" />
-            )}
+    <div
+      className="min-h-screen"
+      style={{
+        backgroundColor: storefrontSettings.background_color,
+        color: storefrontSettings.text_color,
+      }}
+    >
+      <CartHeader tenant={tenant} settings={storefrontSettings} />
 
+      <main className="mx-auto max-w-7xl px-6 py-10">
+        <section
+          className="relative mb-10 overflow-hidden rounded-[2rem] p-8 text-white shadow-sm"
+          style={{
+            backgroundColor: storefrontSettings.primary_color,
+          }}
+        >
+          <div
+            className="absolute inset-0 opacity-70"
+            style={{
+              background: `radial-gradient(circle at top right, ${storefrontSettings.accent_color}55, transparent 35%), radial-gradient(circle at top left, rgba(168,85,247,0.22), transparent 35%)`,
+            }}
+          />
+
+          {(storefrontSettings.hero_image_url || tenant.banner_url) && (
+            <img
+              src={storefrontSettings.hero_image_url || tenant.banner_url || ""}
+              alt={`${tenant.name} cart banner`}
+              className="absolute inset-0 h-full w-full object-cover opacity-20"
+            />
+          )}
+
+          <div className="relative flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
             <div>
-              <p className="text-xl font-bold">{tenant.name}</p>
-              <p className="text-xs text-slate-500">Shopping Cart</p>
+              <div className="mb-5 inline-flex rounded-full border border-white/10 bg-white/10 px-4 py-2 text-sm text-slate-200">
+                Secure shopping cart
+              </div>
+
+              <h1 className="text-4xl font-bold tracking-tight md:text-5xl">
+                Shopping Cart
+              </h1>
+
+              <p className="mt-4 max-w-2xl text-lg leading-8 text-slate-300">
+                Review your selected products, update quantities, and continue
+                to checkout when everything looks right.
+              </p>
             </div>
-          </a>
 
-          <div className="flex items-center gap-4 flex-wrap">
-            <a
-              href={`/store/${tenant.slug}`}
-              className="text-sm text-slate-500 hover:text-black"
-            >
-              Store
-            </a>
-
-            <a
-              href="/customer/profile"
-              className="text-sm text-slate-500 hover:text-black"
-            >
-              My Profile
-            </a>
-
-            <a
-              href="/my-orders"
-              className="text-sm text-slate-500 hover:text-black"
-            >
-              My Orders
-            </a>
-
-            <a
-              href="/wishlist"
-              className="text-sm text-slate-500 hover:text-black"
-            >
-              Wishlist
-            </a>
-
-            <a
-              href="/customer/loyalty"
-              className="text-sm text-slate-500 hover:text-black"
-            >
-              My Rewards
-            </a>
-
-            <CustomerNotificationBell tenantId={tenant.id} />
-
-            <a
-              href={`/store/${tenant.slug}`}
-              className="bg-black text-white px-4 py-2 rounded-xl text-sm hover:opacity-90"
-            >
-              Continue Shopping
-            </a>
+            <div className="rounded-3xl border border-white/10 bg-white/10 p-5 backdrop-blur">
+              <p className="text-sm text-slate-300">Cart summary</p>
+              <p className="mt-2 text-3xl font-bold">{totalItems}</p>
+              <p className="text-sm text-slate-300">item(s) selected</p>
+            </div>
           </div>
-        </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto px-6 py-12">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-10">
-          <div>
-            <h1 className="text-4xl font-bold">Shopping Cart</h1>
-            <p className="text-slate-500 mt-2">
-              Review your selected products before checkout.
-            </p>
-          </div>
-
-          <div className="text-sm text-slate-500">
-            {totalItems} item(s) in cart
-          </div>
-        </div>
+        </section>
 
         {errorMessage && (
-          <div className="bg-red-100 text-red-700 p-4 rounded-xl mb-6">
+          <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700">
             {errorMessage}
           </div>
         )}
 
         {items.length === 0 ? (
-          <div className="bg-white rounded-3xl border p-20 text-center">
-            <h2 className="text-2xl font-bold">Your cart is empty</h2>
-            <p className="text-slate-500 mt-3">
+          <div className="rounded-3xl border border-slate-200 bg-white p-20 text-center shadow-sm">
+            <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100 text-2xl">
+              🛒
+            </div>
+
+            <h2 className="text-2xl font-bold text-slate-950">
+              Your cart is empty
+            </h2>
+
+            <p className="mt-3 text-slate-500">
               Add products to your cart before checkout.
             </p>
 
             <a
               href={`/store/${tenant.slug}`}
-              className="inline-block bg-black text-white px-6 py-3 rounded-xl mt-6"
+              className={`${getButtonClass(
+                storefrontSettings.button_style
+              )} mt-6 inline-block px-6 py-3 font-semibold text-white`}
+              style={{
+                backgroundColor: storefrontSettings.primary_color,
+              }}
             >
               Back to Store
             </a>
           </div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <section className="lg:col-span-2 space-y-5">
+          <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
+            <section className="space-y-5 lg:col-span-2">
               {items.map((item) => {
                 const itemPrice = getItemPrice(item);
                 const itemInventory = getItemInventory(item);
@@ -407,74 +488,91 @@ export default function CartPage() {
                 return (
                   <div
                     key={item.id}
-                    className="bg-white rounded-3xl border p-5 flex flex-col md:flex-row gap-5"
+                    className="flex flex-col gap-5 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:shadow-lg md:flex-row"
                   >
                     <a
                       href={`/store/${tenant.slug}/products/${item.product.id}`}
-                      className="w-full md:w-36 h-36 rounded-2xl overflow-hidden bg-slate-100 flex items-center justify-center"
+                      className="flex h-40 w-full items-center justify-center overflow-hidden rounded-2xl bg-slate-100 md:h-36 md:w-36"
                     >
                       {imageUrl ? (
                         <img
                           src={imageUrl}
                           alt={item.product.name}
-                          className="w-full h-full object-cover"
+                          className="h-full w-full object-cover"
                         />
                       ) : (
-                        <span className="text-slate-400 text-sm">
+                        <span className="text-sm text-slate-400">
                           No Image
                         </span>
                       )}
                     </a>
 
                     <div className="flex-1">
-                      <a
-                        href={`/store/${tenant.slug}/products/${item.product.id}`}
-                        className="text-xl font-semibold hover:underline"
-                      >
-                        {item.product.name}
-                      </a>
+                      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                        <div>
+                          <a
+                            href={`/store/${tenant.slug}/products/${item.product.id}`}
+                            className="text-xl font-semibold text-slate-950 hover:underline"
+                          >
+                            {item.product.name}
+                          </a>
 
-                      {item.variant && (
-                        <div className="mt-2 space-y-1">
-                          <p className="text-sm text-purple-700">
-                            {item.variant.option_name}:{" "}
-                            {item.variant.option_value}
+                          {item.variant && (
+                            <div className="mt-2 space-y-1">
+                              <p
+                                className="text-sm font-medium"
+                                style={{
+                                  color: storefrontSettings.accent_color,
+                                }}
+                              >
+                                {item.variant.option_name}:{" "}
+                                {item.variant.option_value}
+                              </p>
+
+                              {item.variant.sku && (
+                                <p className="text-xs text-slate-400">
+                                  SKU: {item.variant.sku}
+                                </p>
+                              )}
+                            </div>
+                          )}
+
+                          <p className="mt-3 text-slate-500">
+                            {money(itemPrice)}
                           </p>
 
-                          {item.variant.sku && (
-                            <p className="text-xs text-slate-400">
-                              SKU: {item.variant.sku}
-                            </p>
-                          )}
+                          <p
+                            className={`mt-1 text-xs ${
+                              isOutOfStock
+                                ? "text-red-600"
+                                : "text-slate-400"
+                            }`}
+                          >
+                            {isOutOfStock
+                              ? "Out of stock"
+                              : `Stock available: ${itemInventory}`}
+                          </p>
                         </div>
-                      )}
 
-                      <p className="text-slate-500 mt-3">
-                        {money(itemPrice)}
-                      </p>
+                        <div className="md:text-right">
+                          <p className="text-2xl font-bold text-slate-950">
+                            {money(itemPrice * item.quantity)}
+                          </p>
+                        </div>
+                      </div>
 
-                      <p
-                        className={`text-xs mt-1 ${
-                          isOutOfStock ? "text-red-600" : "text-slate-400"
-                        }`}
-                      >
-                        {isOutOfStock
-                          ? "Out of stock"
-                          : `Stock available: ${itemInventory}`}
-                      </p>
-
-                      <div className="flex items-center gap-3 mt-6">
+                      <div className="mt-6 flex flex-wrap items-center gap-3">
                         <button
                           onClick={() =>
                             updateQuantity(item.id, item.quantity - 1)
                           }
                           disabled={isUpdating}
-                          className="w-10 h-10 rounded-xl border hover:bg-slate-100 disabled:opacity-50"
+                          className="h-10 w-10 rounded-xl border border-slate-200 hover:bg-slate-100 disabled:opacity-50"
                         >
                           -
                         </button>
 
-                        <div className="w-12 text-center font-medium">
+                        <div className="w-12 text-center font-medium text-slate-950">
                           {item.quantity}
                         </div>
 
@@ -487,56 +585,55 @@ export default function CartPage() {
                             item.quantity >= itemInventory ||
                             isOutOfStock
                           }
-                          className="w-10 h-10 rounded-xl border hover:bg-slate-100 disabled:opacity-50"
+                          className="h-10 w-10 rounded-xl border border-slate-200 hover:bg-slate-100 disabled:opacity-50"
                         >
                           +
                         </button>
+
+                        <button
+                          onClick={() => removeItem(item.id)}
+                          disabled={isUpdating}
+                          className="ml-auto text-sm text-red-500 hover:underline disabled:opacity-50"
+                        >
+                          Remove
+                        </button>
                       </div>
-
-                      <button
-                        onClick={() => removeItem(item.id)}
-                        disabled={isUpdating}
-                        className="mt-6 text-red-500 text-sm hover:underline disabled:opacity-50"
-                      >
-                        Remove
-                      </button>
-                    </div>
-
-                    <div className="md:text-right">
-                      <p className="text-2xl font-bold">
-                        {money(itemPrice * item.quantity)}
-                      </p>
                     </div>
                   </div>
                 );
               })}
             </section>
 
-            <aside className="bg-white rounded-3xl border p-6 h-fit lg:sticky lg:top-28">
-              <h2 className="text-2xl font-bold mb-8">Order Summary</h2>
+            <aside className="h-fit rounded-3xl border border-slate-200 bg-white p-6 shadow-sm lg:sticky lg:top-28">
+              <div className="mb-8">
+                <p
+                  className="text-sm font-semibold uppercase tracking-wide"
+                  style={{
+                    color: storefrontSettings.accent_color,
+                  }}
+                >
+                  Order summary
+                </p>
 
-              <div className="space-y-4">
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Items</span>
-                  <span>{totalItems}</span>
-                </div>
+                <h2 className="mt-2 text-2xl font-bold text-slate-950">
+                  Cart total
+                </h2>
 
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Subtotal</span>
-                  <span>{money(subtotal)}</span>
-                </div>
-
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Shipping</span>
-                  <span className="text-slate-500">
-                    Calculated at checkout
-                  </span>
-                </div>
+                <p className="mt-1 text-sm text-slate-500">
+                  Shipping, saved address, loyalty points, and payment are
+                  handled on the checkout page.
+                </p>
               </div>
 
-              <div className="border-t my-6" />
+              <div className="space-y-4">
+                <SummaryRow label="Items" value={String(totalItems)} />
+                <SummaryRow label="Subtotal" value={money(subtotal)} />
+                <SummaryRow label="Shipping" value="Calculated at checkout" />
+              </div>
 
-              <div className="flex justify-between text-xl font-bold">
+              <div className="my-6 border-t border-slate-200" />
+
+              <div className="flex justify-between text-xl font-bold text-slate-950">
                 <span>Estimated Total</span>
                 <span>{money(subtotal)}</span>
               </div>
@@ -544,19 +641,160 @@ export default function CartPage() {
               <button
                 onClick={handleCheckout}
                 disabled={items.length === 0}
-                className="w-full bg-black text-white py-4 rounded-2xl mt-8 font-medium hover:opacity-90 transition disabled:opacity-50"
+                className={`${getButtonClass(
+                  storefrontSettings.button_style
+                )} mt-8 w-full py-4 font-semibold text-white transition hover:opacity-90 disabled:opacity-50`}
+                style={{
+                  backgroundColor: storefrontSettings.accent_color,
+                }}
               >
                 Continue to Checkout
               </button>
 
-              <p className="text-xs text-slate-500 text-center mt-4">
-                Delivery, saved address, loyalty points, and payment are handled
-                on the checkout page.
-              </p>
+              <a
+                href={`/store/${tenant.slug}`}
+                className={`${getButtonClass(
+                  storefrontSettings.button_style
+                )} mt-3 block w-full border border-slate-200 py-4 text-center font-semibold text-slate-700 hover:bg-slate-50`}
+              >
+                Continue Shopping
+              </a>
+
+              {storefrontSettings.show_loyalty_banner && (
+                <div
+                  className="mt-6 rounded-2xl border p-4"
+                  style={{
+                    borderColor: `${storefrontSettings.accent_color}33`,
+                    backgroundColor: `${storefrontSettings.accent_color}10`,
+                  }}
+                >
+                  <p
+                    className="font-semibold"
+                    style={{
+                      color: storefrontSettings.primary_color,
+                    }}
+                  >
+                    Rewards ready
+                  </p>
+
+                  <p className="mt-2 text-sm leading-6 text-slate-500">
+                    Continue to checkout to apply available loyalty points and
+                    complete your order.
+                  </p>
+
+                  <a
+                    href="/customer/loyalty"
+                    className="mt-3 inline-block text-sm font-medium hover:underline"
+                    style={{
+                      color: storefrontSettings.accent_color,
+                    }}
+                  >
+                    View rewards →
+                  </a>
+                </div>
+              )}
             </aside>
           </div>
         )}
       </main>
+    </div>
+  );
+}
+
+function CartHeader({
+  tenant,
+  settings,
+}: {
+  tenant: Tenant;
+  settings: StorefrontSettings;
+}) {
+  return (
+    <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur">
+      <div className="mx-auto flex max-w-7xl flex-col gap-5 px-6 py-5 lg:flex-row lg:items-center lg:justify-between">
+        <a href={`/store/${tenant.slug}`} className="flex items-center gap-4">
+          {tenant.logo_url ? (
+            <img
+              src={tenant.logo_url}
+              alt={tenant.name}
+              className="h-12 w-12 rounded-2xl border object-cover"
+            />
+          ) : (
+            <div
+              className="flex h-12 w-12 items-center justify-center rounded-2xl text-lg font-bold text-white"
+              style={{
+                backgroundColor: settings.primary_color,
+              }}
+            >
+              {tenant.name.slice(0, 1)}
+            </div>
+          )}
+
+          <div>
+            <p className="text-xl font-bold text-slate-950">{tenant.name}</p>
+            <p className="text-xs text-slate-500">Shopping cart</p>
+          </div>
+        </a>
+
+        <div className="flex flex-wrap items-center gap-4">
+          <a
+            href={`/store/${tenant.slug}`}
+            className="text-sm text-slate-500 hover:text-slate-950"
+          >
+            Store
+          </a>
+
+          <a
+            href="/customer/profile"
+            className="text-sm text-slate-500 hover:text-slate-950"
+          >
+            My Profile
+          </a>
+
+          <a
+            href="/my-orders"
+            className="text-sm text-slate-500 hover:text-slate-950"
+          >
+            My Orders
+          </a>
+
+          <a
+            href="/wishlist"
+            className="text-sm text-slate-500 hover:text-slate-950"
+          >
+            Wishlist
+          </a>
+
+          <a
+            href="/customer/loyalty"
+            className="text-sm text-slate-500 hover:text-slate-950"
+          >
+            My Rewards
+          </a>
+
+          <CustomerNotificationBell tenantId={tenant.id} />
+
+          <a
+            href={`/store/${tenant.slug}`}
+            className={`${getButtonClass(
+              settings.button_style
+            )} px-4 py-2 text-sm font-medium text-white`}
+            style={{
+              backgroundColor: settings.primary_color,
+            }}
+          >
+            Continue Shopping
+          </a>
+        </div>
+      </div>
+    </header>
+  );
+}
+
+function SummaryRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between text-sm">
+      <span className="text-slate-500">{label}</span>
+      <span className="font-medium text-slate-950">{value}</span>
     </div>
   );
 }

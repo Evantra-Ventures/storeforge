@@ -1,10 +1,73 @@
 import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
+import type { ReactNode } from "react";
 
 type Props = {
   params: {
     orderId: string;
   };
+};
+
+type StorefrontSettings = {
+  id: string;
+  tenant_id: string;
+  theme_preset: string;
+  primary_color: string;
+  accent_color: string;
+  background_color: string;
+  text_color: string;
+  hero_layout: string;
+  product_card_style: string;
+  category_style: string;
+  button_style: string;
+  show_search: boolean;
+  show_categories: boolean;
+  show_featured_products: boolean;
+  show_trust_cards: boolean;
+  show_reviews_section: boolean;
+  show_loyalty_banner: boolean;
+  show_coupon_banner: boolean;
+  hero_badge: string | null;
+  hero_heading: string | null;
+  hero_subheading: string | null;
+  featured_section_title: string | null;
+  featured_section_subtitle: string | null;
+  products_section_title: string | null;
+  products_section_subtitle: string | null;
+  hero_image_url: string | null;
+  promotional_banner_url: string | null;
+  status: string;
+};
+
+const defaultStorefrontSettings: StorefrontSettings = {
+  id: "default",
+  tenant_id: "default",
+  theme_preset: "modern_dark",
+  primary_color: "#020617",
+  accent_color: "#2563eb",
+  background_color: "#f8fafc",
+  text_color: "#0f172a",
+  hero_layout: "split",
+  product_card_style: "rounded",
+  category_style: "pills",
+  button_style: "rounded",
+  show_search: true,
+  show_categories: true,
+  show_featured_products: true,
+  show_trust_cards: true,
+  show_reviews_section: true,
+  show_loyalty_banner: true,
+  show_coupon_banner: true,
+  hero_badge: "Live store · Powered by StoreForge",
+  hero_heading: null,
+  hero_subheading: null,
+  featured_section_title: "Popular right now",
+  featured_section_subtitle: "Explore featured products from this store.",
+  products_section_title: "Shop products",
+  products_section_subtitle: "Browse products, options, and collections.",
+  hero_image_url: null,
+  promotional_banner_url: null,
+  status: "active",
 };
 
 function formatStatus(value: string | null) {
@@ -26,11 +89,22 @@ function statusClass(value: string | null) {
     return "bg-red-100 text-red-700";
   }
 
+  if (["refunded", "partial", "full"].includes(status)) {
+    return "bg-purple-100 text-purple-700";
+  }
+
   return "bg-yellow-100 text-yellow-700";
 }
 
 function money(currency: string, amount: number) {
   return `${currency} ${Number(amount || 0).toFixed(2)}`;
+}
+
+function getButtonClass(buttonStyle: string) {
+  if (buttonStyle === "pill") return "rounded-full";
+  if (buttonStyle === "sharp") return "rounded-none";
+  if (buttonStyle === "soft") return "rounded-xl";
+  return "rounded-2xl";
 }
 
 export default async function OrderSuccessPage({ params }: Props) {
@@ -51,6 +125,7 @@ export default async function OrderSuccessPage({ params }: Props) {
         name,
         slug,
         logo_url,
+        banner_url,
         currency
       )
     `)
@@ -59,6 +134,26 @@ export default async function OrderSuccessPage({ params }: Props) {
     .single();
 
   if (!order) notFound();
+
+  const tenant = Array.isArray(order.tenant) ? order.tenant[0] : order.tenant;
+
+  if (!tenant) notFound();
+
+  await supabase.rpc("ensure_storefront_settings", {
+    p_tenant_id: tenant.id,
+  });
+
+  const { data: settingsData } = await supabase
+    .from("storefront_settings")
+    .select("*")
+    .eq("tenant_id", tenant.id)
+    .eq("status", "active")
+    .maybeSingle();
+
+  const settings: StorefrontSettings = {
+    ...defaultStorefrontSettings,
+    ...(settingsData || {}),
+  };
 
   const { data: orderItems } = await supabase
     .from("order_items")
@@ -110,7 +205,7 @@ export default async function OrderSuccessPage({ params }: Props) {
     .limit(1)
     .maybeSingle();
 
-  const currency = order.currency || order.tenant?.currency || "GHS";
+  const currency = order.currency || tenant.currency || "GHS";
 
   const subtotal =
     order.subtotal_amount ??
@@ -122,6 +217,7 @@ export default async function OrderSuccessPage({ params }: Props) {
   const discountAmount = Number(order.discount_amount || 0);
   const shippingFee = Number(order.shipping_fee || 0);
   const totalAmount = Number(order.total_amount || 0);
+  const refundedAmount = Number(order.refunded_amount || 0);
 
   const loyaltyPointsRedeemed = Number(
     loyaltyRedemption?.points_redeemed || 0
@@ -161,64 +257,53 @@ export default async function OrderSuccessPage({ params }: Props) {
       : null;
 
   const trackingNumber = `SF${order.id.slice(0, 8).toUpperCase()}`;
+  const heroImage = settings.hero_image_url || tenant.banner_url || null;
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl flex-col gap-5 px-6 py-5 md:flex-row md:items-center md:justify-between">
-          <a
-            href={`/store/${order.tenant?.slug}`}
-            className="flex items-center gap-4"
-          >
-            {order.tenant?.logo_url ? (
-              <img
-                src={order.tenant.logo_url}
-                alt={order.tenant.name}
-                className="h-12 w-12 rounded-2xl border object-cover"
-              />
-            ) : (
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-950 text-lg font-bold text-white">
-                {order.tenant?.name?.slice(0, 1) || "S"}
-              </div>
-            )}
-
-            <div>
-              <p className="text-xl font-bold text-slate-950">
-                {order.tenant?.name || "StoreForge"}
-              </p>
-              <p className="text-xs text-slate-500">Order confirmation</p>
-            </div>
-          </a>
-
-          <div className="flex flex-wrap items-center gap-4">
-            <a
-              href={`/store/${order.tenant?.slug}`}
-              className="text-sm text-slate-500 hover:text-slate-950"
-            >
-              Continue shopping
-            </a>
-
-            <a
-              href="/my-orders"
-              className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
-            >
-              My orders
-            </a>
-          </div>
-        </div>
-      </header>
+    <div
+      className="min-h-screen"
+      style={{
+        backgroundColor: settings.background_color,
+        color: settings.text_color,
+      }}
+    >
+      <OrderSuccessHeader tenant={tenant} settings={settings} />
 
       <main className="mx-auto max-w-7xl px-6 py-10">
-        <div className="mb-8 rounded-[2rem] border border-green-200 bg-green-50 p-6">
-          <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-start gap-4">
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-green-600 text-2xl text-white">
+        <section
+          className="relative mb-8 overflow-hidden rounded-[2rem] p-8 text-white shadow-sm"
+          style={{
+            backgroundColor: settings.primary_color,
+          }}
+        >
+          <div
+            className="absolute inset-0 opacity-70"
+            style={{
+              background: `radial-gradient(circle at top right, ${settings.accent_color}55, transparent 35%), radial-gradient(circle at top left, rgba(168,85,247,0.22), transparent 35%)`,
+            }}
+          />
+
+          {heroImage && (
+            <img
+              src={heroImage}
+              alt={`${tenant.name} order confirmation banner`}
+              className="absolute inset-0 h-full w-full object-cover opacity-20"
+            />
+          )}
+
+          <div className="relative flex flex-col gap-8 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-start gap-5">
+              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-white text-3xl font-bold text-green-600">
                 ✓
               </div>
 
               <div>
+                <div className="mb-4 inline-flex rounded-full border border-white/10 bg-white/10 px-4 py-2 text-sm text-slate-200">
+                  Order confirmation
+                </div>
+
                 <div className="flex flex-wrap items-center gap-3">
-                  <h1 className="text-3xl font-bold tracking-tight text-slate-950">
+                  <h1 className="text-4xl font-bold tracking-tight md:text-5xl">
                     Payment successful
                   </h1>
 
@@ -231,28 +316,65 @@ export default async function OrderSuccessPage({ params }: Props) {
                   </span>
                 </div>
 
-                <p className="mt-2 max-w-2xl text-slate-600">
+                <p className="mt-4 max-w-3xl text-lg leading-8 text-slate-300">
                   We’ve received your order. Your payment status is{" "}
-                  <span className="font-semibold capitalize text-slate-950">
+                  <span className="font-semibold capitalize text-white">
                     {formatStatus(order.payment_status)}
                   </span>{" "}
                   and your order is now{" "}
-                  <span className="font-semibold capitalize text-slate-950">
+                  <span className="font-semibold capitalize text-white">
                     {formatStatus(order.status)}
                   </span>
                   .
                 </p>
+
+                <div className="mt-8 flex flex-col gap-4 sm:flex-row">
+                  <a
+                    href={`/store/${tenant.slug}`}
+                    className={`${getButtonClass(
+                      settings.button_style
+                    )} bg-white px-6 py-4 text-center font-semibold`}
+                    style={{
+                      color: settings.primary_color,
+                    }}
+                  >
+                    Continue shopping
+                  </a>
+
+                  <a
+                    href="/my-orders"
+                    className={`${getButtonClass(
+                      settings.button_style
+                    )} border border-white/15 px-6 py-4 text-center font-semibold text-white hover:bg-white/10`}
+                  >
+                    My orders
+                  </a>
+                </div>
               </div>
             </div>
 
-            <div className="rounded-2xl bg-white px-5 py-4 shadow-sm">
-              <p className="text-xs text-slate-500">Order number</p>
-              <p className="mt-1 text-xl font-bold text-slate-950">
-                #{order.id.slice(0, 8)}
+            <div className="rounded-3xl border border-white/10 bg-white/10 p-5 backdrop-blur">
+              <p className="text-sm text-slate-300">Order number</p>
+              <p className="mt-1 text-3xl font-bold">#{order.id.slice(0, 8)}</p>
+              <p className="mt-3 text-sm text-slate-300">
+                Tracking: {trackingNumber}
               </p>
             </div>
           </div>
-        </div>
+        </section>
+
+        <section className="mb-8 grid grid-cols-1 gap-5 md:grid-cols-4">
+          <StatCard
+            label="Payment"
+            value={formatStatus(order.payment_status)}
+          />
+          <StatCard label="Order" value={formatStatus(order.status)} />
+          <StatCard
+            label="Delivery"
+            value={formatStatus(order.delivery_status)}
+          />
+          <StatCard label="Total paid" value={money(currency, totalAmount)} />
+        </section>
 
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
           <section className="space-y-8 lg:col-span-2">
@@ -280,7 +402,9 @@ export default async function OrderSuccessPage({ params }: Props) {
 
                 <a
                   href="/my-orders"
-                  className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium hover:bg-slate-50"
+                  className={`${getButtonClass(
+                    settings.button_style
+                  )} border border-slate-200 px-4 py-2 text-sm font-medium hover:bg-slate-50`}
                 >
                   View order history
                 </a>
@@ -293,64 +417,91 @@ export default async function OrderSuccessPage({ params }: Props) {
                   deliveryStatus={order.delivery_status}
                   createdAt={createdAt}
                   paidAt={paidAt}
+                  settings={settings}
                 />
               </div>
             </Panel>
 
-            {(loyaltyPointsRedeemed > 0 || loyaltyPointsEarned > 0) && (
-              <Panel className="border-green-200 bg-green-50">
-                <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
-                  <div>
-                    <p className="text-sm font-semibold uppercase tracking-wide text-green-700">
-                      Loyalty rewards
-                    </p>
+            {(loyaltyPointsRedeemed > 0 || loyaltyPointsEarned > 0) &&
+              settings.show_loyalty_banner && (
+                <Panel
+                  className="border-green-200"
+                  style={{
+                    backgroundColor: `${settings.accent_color}10`,
+                  }}
+                >
+                  <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <p
+                        className="text-sm font-semibold uppercase tracking-wide"
+                        style={{
+                          color: settings.accent_color,
+                        }}
+                      >
+                        Loyalty rewards
+                      </p>
 
-                    <h2 className="mt-2 text-2xl font-bold text-green-950">
-                      Rewards updated from this order
-                    </h2>
+                      <h2 className="mt-2 text-2xl font-bold text-slate-950">
+                        Rewards updated from this order
+                      </h2>
 
-                    <p className="mt-2 text-sm text-green-800">
-                      Your loyalty activity has been applied to your account.
-                    </p>
+                      <p className="mt-2 text-sm text-slate-600">
+                        Your loyalty activity has been applied to your account.
+                      </p>
+                    </div>
+
+                    <a
+                      href="/customer/loyalty"
+                      className={`${getButtonClass(
+                        settings.button_style
+                      )} px-4 py-2 text-sm font-medium text-white`}
+                      style={{
+                        backgroundColor: settings.accent_color,
+                      }}
+                    >
+                      View rewards
+                    </a>
                   </div>
 
-                  <a
-                    href="/customer/loyalty"
-                    className="rounded-xl bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-800"
-                  >
-                    View rewards
-                  </a>
-                </div>
+                  <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
+                    {loyaltyPointsRedeemed > 0 && (
+                      <RewardCard
+                        label="Points redeemed"
+                        value={loyaltyPointsRedeemed.toLocaleString()}
+                        helper={`Saved ${money(
+                          currency,
+                          loyaltyDiscountAmount
+                        )} on this order.`}
+                      />
+                    )}
 
-                <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
-                  {loyaltyPointsRedeemed > 0 && (
-                    <RewardCard
-                      label="Points redeemed"
-                      value={loyaltyPointsRedeemed.toLocaleString()}
-                      helper={`Saved ${money(
-                        currency,
-                        loyaltyDiscountAmount
-                      )} on this order.`}
-                    />
-                  )}
-
-                  {loyaltyPointsEarned > 0 && (
-                    <RewardCard
-                      label="Points earned"
-                      value={loyaltyPointsEarned.toLocaleString()}
-                      helper="Added to your rewards balance."
-                    />
-                  )}
-                </div>
-              </Panel>
-            )}
+                    {loyaltyPointsEarned > 0 && (
+                      <RewardCard
+                        label="Points earned"
+                        value={loyaltyPointsEarned.toLocaleString()}
+                        helper="Added to your rewards balance."
+                      />
+                    )}
+                  </div>
+                </Panel>
+              )}
 
             <Panel>
               <div className="mb-6 flex items-center justify-between gap-4">
                 <div>
-                  <h2 className="text-2xl font-bold text-slate-950">
+                  <p
+                    className="text-sm font-semibold uppercase tracking-wide"
+                    style={{
+                      color: settings.accent_color,
+                    }}
+                  >
+                    Purchased items
+                  </p>
+
+                  <h2 className="mt-2 text-2xl font-bold text-slate-950">
                     Items purchased
                   </h2>
+
                   <p className="mt-1 text-sm text-slate-500">
                     {orderItems?.length || 0} item(s) included in this order.
                   </p>
@@ -396,7 +547,12 @@ export default async function OrderSuccessPage({ params }: Props) {
                           </h3>
 
                           {variant && (
-                            <p className="mt-1 text-sm text-blue-700">
+                            <p
+                              className="mt-1 text-sm font-medium"
+                              style={{
+                                color: settings.accent_color,
+                              }}
+                            >
                               {variant.option_name}: {variant.option_value}
                             </p>
                           )}
@@ -427,11 +583,21 @@ export default async function OrderSuccessPage({ params }: Props) {
           <aside className="space-y-8">
             <Panel className="lg:sticky lg:top-28">
               <div className="mb-6">
-                <h2 className="text-xl font-bold text-slate-950">
+                <p
+                  className="text-sm font-semibold uppercase tracking-wide"
+                  style={{
+                    color: settings.accent_color,
+                  }}
+                >
                   Payment summary
+                </p>
+
+                <h2 className="mt-2 text-xl font-bold text-slate-950">
+                  Transaction details
                 </h2>
+
                 <p className="mt-1 text-sm text-slate-500">
-                  Transaction and delivery details for your order.
+                  Payment, tracking, and delivery details for your order.
                 </p>
               </div>
 
@@ -453,6 +619,14 @@ export default async function OrderSuccessPage({ params }: Props) {
                   value={formatStatus(order.delivery_status)}
                   badgeClass={statusClass(order.delivery_status)}
                 />
+
+                {order.refund_status && order.refund_status !== "none" && (
+                  <InfoRow
+                    label="Refund"
+                    value={formatStatus(order.refund_status)}
+                    badgeClass={statusClass(order.refund_status)}
+                  />
+                )}
 
                 <InfoRow label="Tracking number" value={trackingNumber} />
                 <InfoRow label="Placed on" value={createdAt} />
@@ -500,6 +674,14 @@ export default async function OrderSuccessPage({ params }: Props) {
 
                 <SummaryRow label="Shipping" value={money(currency, shippingFee)} />
 
+                {refundedAmount > 0 && (
+                  <SummaryRow
+                    label="Refunded"
+                    value={`-${money(currency, refundedAmount)}`}
+                    warning
+                  />
+                )}
+
                 <div className="flex items-center justify-between border-t border-slate-200 pt-4 text-lg">
                   <span className="font-bold text-slate-950">Total paid</span>
                   <span className="font-bold text-slate-950">
@@ -510,15 +692,22 @@ export default async function OrderSuccessPage({ params }: Props) {
 
               <div className="mt-6 grid grid-cols-1 gap-3">
                 <a
-                  href={`/store/${order.tenant?.slug}`}
-                  className="rounded-2xl bg-slate-950 px-5 py-4 text-center font-semibold text-white hover:bg-slate-800"
+                  href={`/store/${tenant.slug}`}
+                  className={`${getButtonClass(
+                    settings.button_style
+                  )} px-5 py-4 text-center font-semibold text-white hover:opacity-90`}
+                  style={{
+                    backgroundColor: settings.primary_color,
+                  }}
                 >
                   Continue shopping
                 </a>
 
                 <a
                   href="/my-orders"
-                  className="rounded-2xl border border-slate-200 px-5 py-4 text-center font-semibold hover:bg-slate-50"
+                  className={`${getButtonClass(
+                    settings.button_style
+                  )} border border-slate-200 px-5 py-4 text-center font-semibold hover:bg-slate-50`}
                 >
                   View my orders
                 </a>
@@ -576,18 +765,93 @@ export default async function OrderSuccessPage({ params }: Props) {
   );
 }
 
+function OrderSuccessHeader({
+  tenant,
+  settings,
+}: {
+  tenant: any;
+  settings: StorefrontSettings;
+}) {
+  return (
+    <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur">
+      <div className="mx-auto flex max-w-7xl flex-col gap-5 px-6 py-5 md:flex-row md:items-center md:justify-between">
+        <a href={`/store/${tenant.slug}`} className="flex items-center gap-4">
+          {tenant.logo_url ? (
+            <img
+              src={tenant.logo_url}
+              alt={tenant.name}
+              className="h-12 w-12 rounded-2xl border object-cover"
+            />
+          ) : (
+            <div
+              className="flex h-12 w-12 items-center justify-center rounded-2xl text-lg font-bold text-white"
+              style={{
+                backgroundColor: settings.primary_color,
+              }}
+            >
+              {tenant.name?.slice(0, 1) || "S"}
+            </div>
+          )}
+
+          <div>
+            <p className="text-xl font-bold text-slate-950">
+              {tenant.name || "StoreForge"}
+            </p>
+            <p className="text-xs text-slate-500">Order confirmation</p>
+          </div>
+        </a>
+
+        <div className="flex flex-wrap items-center gap-4">
+          <a
+            href={`/store/${tenant.slug}`}
+            className="text-sm text-slate-500 hover:text-slate-950"
+          >
+            Continue shopping
+          </a>
+
+          <a
+            href="/my-orders"
+            className={`${getButtonClass(
+              settings.button_style
+            )} px-4 py-2 text-sm font-medium text-white hover:opacity-90`}
+            style={{
+              backgroundColor: settings.primary_color,
+            }}
+          >
+            My orders
+          </a>
+        </div>
+      </div>
+    </header>
+  );
+}
+
 function Panel({
   children,
   className = "",
+  style,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
   className?: string;
+  style?: React.CSSProperties;
 }) {
   return (
     <div
       className={`rounded-3xl border border-slate-200 bg-white p-6 shadow-sm ${className}`}
+      style={style}
     >
       {children}
+    </div>
+  );
+}
+
+function StatCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+      <p className="text-sm text-slate-500">{label}</p>
+      <h2 className="mt-2 text-xl font-bold capitalize text-slate-950">
+        {value}
+      </h2>
     </div>
   );
 }
@@ -624,15 +888,21 @@ function SummaryRow({
   label,
   value,
   success,
+  warning,
 }: {
   label: string;
   value: string;
   success?: boolean;
+  warning?: boolean;
 }) {
   return (
     <div
       className={`flex items-center justify-between ${
-        success ? "text-green-700" : "text-slate-600"
+        success
+          ? "text-green-700"
+          : warning
+          ? "text-purple-700"
+          : "text-slate-600"
       }`}
     >
       <span>{label}</span>
@@ -665,12 +935,14 @@ function OrderTimeline({
   deliveryStatus,
   createdAt,
   paidAt,
+  settings,
 }: {
   paymentStatus: string | null;
   orderStatus: string | null;
   deliveryStatus: string | null;
   createdAt: string;
   paidAt: string | null;
+  settings: StorefrontSettings;
 }) {
   const paid = paymentStatus === "paid";
   const processing = ["processing", "completed"].includes(orderStatus || "");
@@ -712,11 +984,13 @@ function OrderTimeline({
 
           <div className="relative rounded-2xl border border-slate-200 bg-white p-4">
             <div
-              className={`mb-3 flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold ${
-                step.complete
-                  ? "bg-green-600 text-white"
-                  : "bg-slate-100 text-slate-400"
-              }`}
+              className="mb-3 flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold"
+              style={{
+                backgroundColor: step.complete
+                  ? settings.accent_color
+                  : "#f1f5f9",
+                color: step.complete ? "#ffffff" : "#94a3b8",
+              }}
             >
               {step.complete ? "✓" : index + 1}
             </div>

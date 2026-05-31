@@ -3,6 +3,46 @@ import ReorderButton from "@/components/ReorderButton";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 
+type StorefrontSettings = {
+  id: string;
+  tenant_id: string;
+  theme_preset: string;
+  primary_color: string;
+  accent_color: string;
+  background_color: string;
+  text_color: string;
+  hero_layout: string;
+  product_card_style: string;
+  category_style: string;
+  button_style: string;
+  show_search: boolean;
+  show_categories: boolean;
+  show_featured_products: boolean;
+  show_trust_cards: boolean;
+  show_reviews_section: boolean;
+  show_loyalty_banner: boolean;
+  show_coupon_banner: boolean;
+  hero_badge: string | null;
+  hero_heading: string | null;
+  hero_subheading: string | null;
+  featured_section_title: string | null;
+  featured_section_subtitle: string | null;
+  products_section_title: string | null;
+  products_section_subtitle: string | null;
+  hero_image_url: string | null;
+  promotional_banner_url: string | null;
+  status: string;
+};
+
+type Tenant = {
+  id: string;
+  name: string;
+  slug: string;
+  logo_url: string | null;
+  banner_url: string | null;
+  currency: string | null;
+};
+
 type OrderItem = {
   id: string;
   order_id: string;
@@ -58,12 +98,50 @@ type LoyaltyTransaction = {
   points: number;
 };
 
+const defaultStorefrontSettings: StorefrontSettings = {
+  id: "default",
+  tenant_id: "default",
+  theme_preset: "modern_dark",
+  primary_color: "#020617",
+  accent_color: "#2563eb",
+  background_color: "#f8fafc",
+  text_color: "#0f172a",
+  hero_layout: "split",
+  product_card_style: "rounded",
+  category_style: "pills",
+  button_style: "rounded",
+  show_search: true,
+  show_categories: true,
+  show_featured_products: true,
+  show_trust_cards: true,
+  show_reviews_section: true,
+  show_loyalty_banner: true,
+  show_coupon_banner: true,
+  hero_badge: "Live store · Powered by StoreForge",
+  hero_heading: null,
+  hero_subheading: null,
+  featured_section_title: "Popular right now",
+  featured_section_subtitle: "Explore featured products from this store.",
+  products_section_title: "Shop products",
+  products_section_subtitle: "Browse products, options, and collections.",
+  hero_image_url: null,
+  promotional_banner_url: null,
+  status: "active",
+};
+
 function money(amount: number, currency = "GHS") {
   return `${currency} ${Number(amount || 0).toFixed(2)}`;
 }
 
 function formatStatus(value: string | null) {
   return (value || "pending").replaceAll("_", " ");
+}
+
+function getButtonClass(buttonStyle: string) {
+  if (buttonStyle === "pill") return "rounded-full";
+  if (buttonStyle === "sharp") return "rounded-none";
+  if (buttonStyle === "soft") return "rounded-xl";
+  return "rounded-2xl";
 }
 
 function getStatusBadgeClass(status: string | null) {
@@ -88,6 +166,13 @@ function getStatusBadgeClass(status: string | null) {
   return "bg-yellow-100 text-yellow-700";
 }
 
+function mergeSettings(settings?: StorefrontSettings | null) {
+  return {
+    ...defaultStorefrontSettings,
+    ...(settings || {}),
+  };
+}
+
 export default async function MyOrdersPage() {
   const supabase = createClient();
 
@@ -105,13 +190,53 @@ export default async function MyOrdersPage() {
         id,
         name,
         slug,
-        logo_url
+        logo_url,
+        banner_url,
+        currency
       )
     `)
     .eq("customer_id", user.id)
     .order("created_at", { ascending: false });
 
-  const orderIds = (orders || []).map((order: any) => order.id);
+  const normalizedOrders =
+    orders?.map((order: any) => {
+      const tenant = Array.isArray(order.tenant)
+        ? order.tenant[0]
+        : order.tenant;
+
+      return {
+        ...order,
+        tenant,
+      };
+    }) || [];
+
+  const orderIds = normalizedOrders.map((order: any) => order.id);
+
+  const tenantIds = Array.from(
+    new Set(
+      normalizedOrders
+        .map((order: any) => order.tenant?.id)
+        .filter(Boolean)
+    )
+  );
+
+  let settingsByTenant: Record<string, StorefrontSettings> = {};
+
+  if (tenantIds.length > 0) {
+    const { data: settingsRows } = await supabase
+      .from("storefront_settings")
+      .select("*")
+      .in("tenant_id", tenantIds)
+      .eq("status", "active");
+
+    settingsByTenant = (settingsRows || []).reduce(
+      (acc: Record<string, StorefrontSettings>, row: StorefrontSettings) => {
+        acc[row.tenant_id] = mergeSettings(row);
+        return acc;
+      },
+      {}
+    );
+  }
 
   let orderItems: OrderItem[] = [];
   let loyaltyRedemptions: LoyaltyRedemption[] = [];
@@ -207,16 +332,19 @@ export default async function MyOrdersPage() {
     return Number(earned?.points || 0);
   };
 
-  const totalOrders = orders?.length || 0;
-  const paidOrders = (orders || []).filter(
+  const totalOrders = normalizedOrders.length;
+
+  const paidOrders = normalizedOrders.filter(
     (order: any) => order.payment_status === "paid"
   ).length;
-  const activeDeliveries = (orders || []).filter((order: any) =>
+
+  const activeDeliveries = normalizedOrders.filter((order: any) =>
     ["pending", "preparing", "out_for_delivery"].includes(
       order.delivery_status || "pending"
     )
   ).length;
-  const totalSpent = (orders || []).reduce(
+
+  const totalSpent = normalizedOrders.reduce(
     (sum: number, order: any) => sum + Number(order.total_amount || 0),
     0
   );
@@ -305,7 +433,10 @@ export default async function MyOrdersPage() {
 
                 <div className="mt-6 space-y-3">
                   <HeroMiniRow label="Paid orders" value={paidOrders} />
-                  <HeroMiniRow label="Active deliveries" value={activeDeliveries} />
+                  <HeroMiniRow
+                    label="Active deliveries"
+                    value={activeDeliveries}
+                  />
                   <HeroMiniRow label="Total spent" value={money(totalSpent)} />
                 </div>
               </div>
@@ -314,17 +445,29 @@ export default async function MyOrdersPage() {
         </section>
 
         <section className="grid grid-cols-1 gap-5 md:grid-cols-4">
-          <StatCard label="Total orders" value={totalOrders} helper="All purchases" />
-          <StatCard label="Paid orders" value={paidOrders} helper="Successful payments" />
+          <StatCard
+            label="Total orders"
+            value={totalOrders}
+            helper="All purchases"
+          />
+          <StatCard
+            label="Paid orders"
+            value={paidOrders}
+            helper="Successful payments"
+          />
           <StatCard
             label="Active deliveries"
             value={activeDeliveries}
             helper="Pending or in progress"
           />
-          <StatCard label="Total spent" value={money(totalSpent)} helper="Across all stores" />
+          <StatCard
+            label="Total spent"
+            value={money(totalSpent)}
+            helper="Across all stores"
+          />
         </section>
 
-        {!orders || orders.length === 0 ? (
+        {normalizedOrders.length === 0 ? (
           <div className="rounded-3xl border border-slate-200 bg-white p-16 text-center shadow-sm">
             <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100 text-2xl">
               🛍️
@@ -345,7 +488,14 @@ export default async function MyOrdersPage() {
           </div>
         ) : (
           <section className="space-y-6">
-            {orders.map((order: any) => {
+            {normalizedOrders.map((order: any) => {
+              const tenant: Tenant | null = order.tenant || null;
+
+              const settings =
+                tenant?.id && settingsByTenant[tenant.id]
+                  ? settingsByTenant[tenant.id]
+                  : defaultStorefrontSettings;
+
               const items = getOrderItems(order.id);
               const visibleItems = items.slice(0, 3);
               const hiddenItemCount = Math.max(0, items.length - 3);
@@ -362,18 +512,30 @@ export default async function MyOrdersPage() {
 
               const pointsEarned = getOrderPointsEarned(order.id);
               const refundedAmount = Number(order.refunded_amount || 0);
-              const currency = order.currency || "GHS";
+              const currency = order.currency || tenant?.currency || "GHS";
 
               return (
                 <article
                   key={order.id}
                   className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-xl"
                 >
+                  <div
+                    className="h-2"
+                    style={{
+                      backgroundColor: settings.accent_color,
+                    }}
+                  />
+
                   <div className="border-b border-slate-100 p-6">
                     <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
                       <div className="flex-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+                          <span
+                            className="rounded-full px-3 py-1 text-xs font-medium text-white"
+                            style={{
+                              backgroundColor: settings.primary_color,
+                            }}
+                          >
                             #{order.id.slice(0, 8)}
                           </span>
 
@@ -414,21 +576,26 @@ export default async function MyOrdersPage() {
                         </div>
 
                         <div className="mt-5 flex items-center gap-4">
-                          {order.tenant?.logo_url ? (
+                          {tenant?.logo_url ? (
                             <img
-                              src={order.tenant.logo_url}
-                              alt={order.tenant.name}
+                              src={tenant.logo_url}
+                              alt={tenant.name}
                               className="h-12 w-12 rounded-2xl border object-cover"
                             />
                           ) : (
-                            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-950 text-sm font-bold text-white">
-                              {order.tenant?.name?.slice(0, 1) || "S"}
+                            <div
+                              className="flex h-12 w-12 items-center justify-center rounded-2xl text-sm font-bold text-white"
+                              style={{
+                                backgroundColor: settings.primary_color,
+                              }}
+                            >
+                              {tenant?.name?.slice(0, 1) || "S"}
                             </div>
                           )}
 
                           <div>
                             <h2 className="text-xl font-bold text-slate-950">
-                              {order.tenant?.name || "Store"}
+                              {tenant?.name || "Store"}
                             </h2>
 
                             <p className="text-sm text-slate-500">
@@ -451,7 +618,12 @@ export default async function MyOrdersPage() {
                         </p>
                       </div>
 
-                      <div className="rounded-2xl bg-slate-50 p-5 lg:text-right">
+                      <div
+                        className="rounded-2xl p-5 lg:text-right"
+                        style={{
+                          backgroundColor: `${settings.accent_color}10`,
+                        }}
+                      >
                         <p className="text-xs text-slate-500">Order total</p>
                         <p className="mt-1 text-3xl font-bold text-slate-950">
                           {money(Number(order.total_amount || 0), currency)}
@@ -473,6 +645,7 @@ export default async function MyOrdersPage() {
                       paymentStatus={order.payment_status}
                       orderStatus={order.status}
                       deliveryStatus={order.delivery_status}
+                      settings={settings}
                     />
                   </div>
 
@@ -509,7 +682,12 @@ export default async function MyOrdersPage() {
                               </p>
 
                               {variant && (
-                                <p className="mt-1 text-xs text-blue-700">
+                                <p
+                                  className="mt-1 text-xs font-medium"
+                                  style={{
+                                    color: settings.accent_color,
+                                  }}
+                                >
                                   {variant.option_name}: {variant.option_value}
                                 </p>
                               )}
@@ -548,28 +726,39 @@ export default async function MyOrdersPage() {
                   {(pointsRedeemed > 0 ||
                     pointsEarned > 0 ||
                     loyaltyDiscount > 0) && (
-                    <div className="mx-6 rounded-2xl border border-green-200 bg-green-50 p-4">
+                    <div
+                      className="mx-6 rounded-2xl border p-4"
+                      style={{
+                        borderColor: `${settings.accent_color}33`,
+                        backgroundColor: `${settings.accent_color}10`,
+                      }}
+                    >
                       <div className="flex flex-wrap items-center justify-between gap-4">
                         <div>
-                          <p className="font-semibold text-green-800">
+                          <p
+                            className="font-semibold"
+                            style={{
+                              color: settings.primary_color,
+                            }}
+                          >
                             Loyalty rewards
                           </p>
 
                           <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
                             {pointsRedeemed > 0 && (
-                              <span className="text-green-700">
+                              <span className="text-slate-600">
                                 Redeemed {pointsRedeemed.toLocaleString()} points
                               </span>
                             )}
 
                             {loyaltyDiscount > 0 && (
-                              <span className="text-green-700">
+                              <span className="text-slate-600">
                                 Saved {money(loyaltyDiscount, currency)}
                               </span>
                             )}
 
                             {pointsEarned > 0 && (
-                              <span className="text-green-700">
+                              <span className="text-slate-600">
                                 Earned {pointsEarned.toLocaleString()} points
                               </span>
                             )}
@@ -578,7 +767,10 @@ export default async function MyOrdersPage() {
 
                         <a
                           href="/customer/loyalty"
-                          className="text-sm font-medium text-green-700 hover:underline"
+                          className="text-sm font-medium hover:underline"
+                          style={{
+                            color: settings.accent_color,
+                          }}
                         >
                           My rewards →
                         </a>
@@ -589,35 +781,43 @@ export default async function MyOrdersPage() {
                   <div className="grid grid-cols-1 gap-3 p-6 sm:grid-cols-4">
                     <a
                       href={`/order-success/${order.id}`}
-                      className="rounded-2xl bg-slate-950 py-3 text-center text-sm font-semibold text-white hover:bg-slate-800"
+                      className={`${getButtonClass(
+                        settings.button_style
+                      )} py-3 text-center text-sm font-semibold text-white hover:opacity-90`}
+                      style={{
+                        backgroundColor: settings.primary_color,
+                      }}
                     >
                       View details
                     </a>
 
-                    {order.tenant?.slug ? (
+                    {tenant?.slug ? (
                       <a
-                        href={`/store/${order.tenant.slug}`}
-                        className="rounded-2xl border border-slate-200 py-3 text-center text-sm font-semibold hover:bg-slate-50"
+                        href={`/store/${tenant.slug}`}
+                        className={`${getButtonClass(
+                          settings.button_style
+                        )} border border-slate-200 py-3 text-center text-sm font-semibold hover:bg-slate-50`}
                       >
                         Shop again
                       </a>
                     ) : (
                       <a
                         href="/"
-                        className="rounded-2xl border border-slate-200 py-3 text-center text-sm font-semibold hover:bg-slate-50"
+                        className={`${getButtonClass(
+                          settings.button_style
+                        )} border border-slate-200 py-3 text-center text-sm font-semibold hover:bg-slate-50`}
                       >
                         Shop again
                       </a>
                     )}
 
-                    <ReorderButton
-                      orderId={order.id}
-                      storeSlug={order.tenant?.slug}
-                    />
+                    <ReorderButton orderId={order.id} storeSlug={tenant?.slug} />
 
                     <a
                       href="/customer/loyalty"
-                      className="rounded-2xl border border-slate-200 py-3 text-center text-sm font-semibold hover:bg-slate-50"
+                      className={`${getButtonClass(
+                        settings.button_style
+                      )} border border-slate-200 py-3 text-center text-sm font-semibold hover:bg-slate-50`}
                     >
                       Rewards
                     </a>
@@ -673,7 +873,9 @@ function StatusBadge({
   className: string;
 }) {
   return (
-    <span className={`rounded-full px-3 py-1 text-xs font-semibold capitalize ${className}`}>
+    <span
+      className={`rounded-full px-3 py-1 text-xs font-semibold capitalize ${className}`}
+    >
       {label}
     </span>
   );
@@ -683,10 +885,12 @@ function OrderProgress({
   paymentStatus,
   orderStatus,
   deliveryStatus,
+  settings,
 }: {
   paymentStatus: string | null;
   orderStatus: string | null;
   deliveryStatus: string | null;
+  settings: StorefrontSettings;
 }) {
   const paid = paymentStatus === "paid" || paymentStatus === "refunded";
   const processing = ["processing", "completed"].includes(orderStatus || "");
@@ -719,26 +923,33 @@ function OrderProgress({
       {steps.map((step, index) => (
         <div
           key={step.label}
-          className={`rounded-2xl border p-4 ${
-            step.complete
-              ? "border-green-200 bg-green-50"
-              : "border-slate-200 bg-white"
-          }`}
+          className="rounded-2xl border p-4"
+          style={{
+            borderColor: step.complete
+              ? `${settings.accent_color}55`
+              : "#e2e8f0",
+            backgroundColor: step.complete
+              ? `${settings.accent_color}10`
+              : "#ffffff",
+          }}
         >
           <div
-            className={`mb-3 flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold ${
-              step.complete
-                ? "bg-green-600 text-white"
-                : "bg-slate-100 text-slate-400"
-            }`}
+            className="mb-3 flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold"
+            style={{
+              backgroundColor: step.complete
+                ? settings.accent_color
+                : "#f1f5f9",
+              color: step.complete ? "#ffffff" : "#94a3b8",
+            }}
           >
             {step.complete ? "✓" : index + 1}
           </div>
 
           <p
-            className={`text-sm font-semibold ${
-              step.complete ? "text-green-800" : "text-slate-500"
-            }`}
+            className="text-sm font-semibold"
+            style={{
+              color: step.complete ? settings.primary_color : "#64748b",
+            }}
           >
             {step.label}
           </p>

@@ -8,6 +8,68 @@ type StorePageProps = {
   searchParams?: { q?: string };
 };
 
+type StorefrontSettings = {
+  id: string;
+  tenant_id: string;
+  theme_preset: string;
+  primary_color: string;
+  accent_color: string;
+  background_color: string;
+  text_color: string;
+  hero_layout: string;
+  product_card_style: string;
+  category_style: string;
+  button_style: string;
+  show_search: boolean;
+  show_categories: boolean;
+  show_featured_products: boolean;
+  show_trust_cards: boolean;
+  show_reviews_section: boolean;
+  show_loyalty_banner: boolean;
+  show_coupon_banner: boolean;
+  hero_badge: string | null;
+  hero_heading: string | null;
+  hero_subheading: string | null;
+  featured_section_title: string | null;
+  featured_section_subtitle: string | null;
+  products_section_title: string | null;
+  products_section_subtitle: string | null;
+  hero_image_url: string | null;
+  promotional_banner_url: string | null;
+  status: string;
+};
+
+const defaultStorefrontSettings: StorefrontSettings = {
+  id: "default",
+  tenant_id: "default",
+  theme_preset: "modern_dark",
+  primary_color: "#020617",
+  accent_color: "#2563eb",
+  background_color: "#f8fafc",
+  text_color: "#0f172a",
+  hero_layout: "split",
+  product_card_style: "rounded",
+  category_style: "pills",
+  button_style: "rounded",
+  show_search: true,
+  show_categories: true,
+  show_featured_products: true,
+  show_trust_cards: true,
+  show_reviews_section: true,
+  show_loyalty_banner: true,
+  show_coupon_banner: true,
+  hero_badge: "Live store · Powered by StoreForge",
+  hero_heading: null,
+  hero_subheading: null,
+  featured_section_title: "Popular right now",
+  featured_section_subtitle: "Explore featured products from this store.",
+  products_section_title: "Shop products",
+  products_section_subtitle: "Browse products, options, and collections.",
+  hero_image_url: null,
+  promotional_banner_url: null,
+  status: "active",
+};
+
 export async function generateMetadata({ params }: StorePageProps) {
   const supabase = createClient();
 
@@ -52,8 +114,34 @@ export default async function StorePage({
 
   if (error || !tenant) notFound();
 
+  await supabase.rpc("ensure_storefront_settings", {
+    p_tenant_id: tenant.id,
+  });
+
+  const { data: settingsData } = await supabase
+    .from("storefront_settings")
+    .select("*")
+    .eq("tenant_id", tenant.id)
+    .eq("status", "active")
+    .maybeSingle();
+
+  const settings: StorefrontSettings = {
+    ...defaultStorefrontSettings,
+    ...(settingsData || {}),
+  };
+
   const currency = tenant.currency || "GHS";
   const storeUrl = `${siteUrl}/store/${tenant.slug}`;
+
+  const heroHeading = settings.hero_heading || tenant.name;
+
+  const heroSubheading =
+    settings.hero_subheading ||
+    tenant.description ||
+    "Explore our latest products, collections, and offers with a smooth shopping experience from browsing to checkout.";
+
+  const heroImage =
+    settings.hero_image_url || tenant.banner_url || tenant.logo_url || null;
 
   const { data: categories } = await supabase
     .from("categories")
@@ -134,7 +222,13 @@ export default async function StorePage({
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-950">
+    <div
+      className="min-h-screen"
+      style={{
+        backgroundColor: settings.background_color,
+        color: settings.text_color,
+      }}
+    >
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(storeJsonLd) }}
@@ -145,214 +239,190 @@ export default async function StorePage({
         dangerouslySetInnerHTML={{ __html: JSON.stringify(itemListJsonLd) }}
       />
 
-      <StoreHeader tenant={tenant} />
+      <StoreHeader tenant={tenant} settings={settings} />
 
       <main>
-        <section className="relative overflow-hidden bg-slate-950 text-white">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(37,99,235,0.35),transparent_35%),radial-gradient(circle_at_top_left,rgba(168,85,247,0.22),transparent_35%)]" />
+        <HeroSection
+          tenant={tenant}
+          settings={settings}
+          heroHeading={heroHeading}
+          heroSubheading={heroSubheading}
+          heroImage={heroImage}
+          featuredProducts={featuredProducts}
+          totalProducts={totalProducts}
+          totalCategories={totalCategories}
+          currency={currency}
+        />
 
-          {tenant.banner_url && (
-            <img
-              src={tenant.banner_url}
-              alt={`${tenant.name} banner`}
-              className="absolute inset-0 h-full w-full object-cover opacity-25"
-            />
-          )}
-
-          <div className="relative mx-auto grid max-w-7xl grid-cols-1 gap-12 px-6 py-16 lg:grid-cols-2 lg:items-center lg:py-24">
-            <div>
-              <div className="mb-6 inline-flex rounded-full border border-white/10 bg-white/10 px-4 py-2 text-sm text-slate-200">
-                Live store · Powered by StoreForge
-              </div>
-
-              <div className="flex items-center gap-4">
-                {tenant.logo_url ? (
-                  <img
-                    src={tenant.logo_url}
-                    alt={tenant.name}
-                    className="h-16 w-16 rounded-2xl border border-white/20 object-cover"
-                  />
-                ) : (
-                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white text-2xl font-bold text-slate-950">
-                    {tenant.name?.slice(0, 1) || "S"}
-                  </div>
-                )}
-
-                <div>
-                  <p className="text-sm text-slate-300">Welcome to</p>
-                  <h1 className="text-4xl font-bold tracking-tight md:text-6xl">
-                    {tenant.name}
-                  </h1>
-                </div>
-              </div>
-
-              <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-300">
-                {tenant.description ||
-                  "Explore our latest products, collections, and offers with a smooth shopping experience from browsing to checkout."}
-              </p>
-
-              <div className="mt-10 flex flex-col gap-4 sm:flex-row">
-                <a
-                  href="#products"
-                  className="rounded-2xl bg-white px-7 py-4 text-center font-semibold text-slate-950 hover:bg-slate-200"
-                >
-                  Shop products
-                </a>
-
-                <a
-                  href={`/store/${tenant.slug}/cart`}
-                  className="rounded-2xl border border-white/15 px-7 py-4 text-center font-semibold text-white hover:bg-white/10"
-                >
-                  View cart
-                </a>
-              </div>
-
-              <div className="mt-10 grid grid-cols-3 gap-4 border-t border-white/10 pt-8">
-                <HeroStat label="Products" value={String(totalProducts)} />
-                <HeroStat label="Categories" value={String(totalCategories)} />
-                <HeroStat label="Checkout" value="Secure" />
-              </div>
-            </div>
-
-            <div className="rounded-[2rem] border border-white/10 bg-white/10 p-4 shadow-2xl backdrop-blur">
-              <div className="rounded-[1.5rem] bg-white p-5 text-slate-950">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-                  <div>
-                    <p className="text-sm text-slate-500">Featured products</p>
-                    <h2 className="text-xl font-bold">Popular right now</h2>
-                  </div>
-
-                  <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700">
-                    Live demo
-                  </span>
-                </div>
-
-                <div className="mt-5 grid grid-cols-2 gap-4">
-                  {featuredProducts.length > 0 ? (
-                    featuredProducts.map((product: any) => {
-                      const lowestPrice = getLowestPrice(product);
-
-                      return (
-                        <a
-                          key={product.id}
-                          href={`/store/${tenant.slug}/products/${product.id}`}
-                          className="rounded-2xl border border-slate-100 bg-slate-50 p-3 transition hover:-translate-y-1 hover:shadow-md"
-                        >
-                          <div className="aspect-square overflow-hidden rounded-xl bg-slate-100">
-                            {product.image_url ? (
-                              <img
-                                src={product.image_url}
-                                alt={product.name}
-                                className="h-full w-full object-cover"
-                              />
-                            ) : (
-                              <div className="flex h-full w-full items-center justify-center text-xs text-slate-400">
-                                No image
-                              </div>
-                            )}
-                          </div>
-
-                          <p className="mt-3 truncate text-sm font-semibold">
-                            {product.name}
-                          </p>
-
-                          <p className="mt-1 text-sm font-bold">
-                            {currency} {lowestPrice.toFixed(2)}
-                          </p>
-                        </a>
-                      );
-                    })
-                  ) : (
-                    <div className="col-span-2 rounded-2xl bg-slate-50 p-8 text-center text-sm text-slate-500">
-                      Products will appear here once the merchant adds items.
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="mx-auto max-w-7xl px-6 py-8">
-          <form
-            action={`/store/${tenant.slug}`}
-            className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm"
-          >
-            <div className="flex flex-col gap-3 md:flex-row">
-              <input
-                name="q"
-                defaultValue={searchQuery}
-                placeholder="Search products, categories, or collections..."
-                className="flex-1 rounded-2xl border border-slate-200 px-4 py-4 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+        {settings.show_coupon_banner && settings.promotional_banner_url && (
+          <section className="mx-auto max-w-7xl px-6 pt-8">
+            <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white p-3 shadow-sm">
+              <img
+                src={settings.promotional_banner_url}
+                alt={`${tenant.name} promotion`}
+                className="h-auto w-full rounded-[1.5rem] object-cover"
               />
-
-              <button className="rounded-2xl bg-slate-950 px-6 py-4 font-semibold text-white hover:bg-slate-800">
-                Search
-              </button>
-
-              {searchQuery && (
-                <a
-                  href={`/store/${tenant.slug}`}
-                  className="rounded-2xl border border-slate-200 px-6 py-4 text-center font-semibold hover:bg-slate-50"
-                >
-                  Reset
-                </a>
-              )}
             </div>
-          </form>
-        </section>
+          </section>
+        )}
 
-        <section className="mx-auto max-w-7xl px-6 pb-8">
-          <div className="flex gap-3 overflow-x-auto pb-2">
-            <CategoryChip href={`/store/${tenant.slug}`} active>
-              All Products
-            </CategoryChip>
+        {settings.show_search && (
+          <section className="mx-auto max-w-7xl px-6 py-8">
+            <form
+              action={`/store/${tenant.slug}`}
+              className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm"
+            >
+              <div className="flex flex-col gap-3 md:flex-row">
+                <input
+                  name="q"
+                  defaultValue={searchQuery}
+                  placeholder="Search products, categories, or collections..."
+                  className="flex-1 rounded-2xl border border-slate-200 px-4 py-4 outline-none transition focus:ring-4"
+                  style={{
+                    borderColor: "#e2e8f0",
+                  }}
+                />
 
-            {categories?.map((category) => (
+                <button
+                  className={`${getButtonClass(
+                    settings.button_style
+                  )} px-6 py-4 font-semibold text-white`}
+                  style={{
+                    backgroundColor: settings.accent_color,
+                  }}
+                >
+                  Search
+                </button>
+
+                {searchQuery && (
+                  <a
+                    href={`/store/${tenant.slug}`}
+                    className={`${getButtonClass(
+                      settings.button_style
+                    )} border border-slate-200 px-6 py-4 text-center font-semibold hover:bg-slate-50`}
+                  >
+                    Reset
+                  </a>
+                )}
+              </div>
+            </form>
+          </section>
+        )}
+
+        {settings.show_categories && settings.category_style !== "hidden" && (
+          <section className="mx-auto max-w-7xl px-6 pb-8">
+            <div
+              className={
+                settings.category_style === "cards"
+                  ? "grid grid-cols-2 gap-3 md:grid-cols-4"
+                  : "flex gap-3 overflow-x-auto pb-2"
+              }
+            >
               <CategoryChip
-                key={category.id}
-                href={`/store/${tenant.slug}/categories/${category.slug}`}
+                href={`/store/${tenant.slug}`}
+                active
+                settings={settings}
               >
-                {category.name}
+                All Products
               </CategoryChip>
-            ))}
-          </div>
-        </section>
 
-        <section className="mx-auto max-w-7xl px-6 pb-10">
-          <div className="grid grid-cols-1 gap-5 md:grid-cols-4">
-            <TrustCard
-              title="Secure checkout"
-              description="Pay safely with a checkout flow built for confidence."
-            />
-            <TrustCard
-              title="Fast browsing"
-              description="Clean product pages and responsive shopping experience."
-            />
-            <TrustCard
-              title="Order updates"
-              description="Track orders, delivery status, and customer notifications."
-            />
-            <TrustCard
-              title="Rewards ready"
-              description="Earn and redeem loyalty points when enabled."
-            />
-          </div>
-        </section>
+              {categories?.map((category) => (
+                <CategoryChip
+                  key={category.id}
+                  href={`/store/${tenant.slug}/categories/${category.slug}`}
+                  settings={settings}
+                >
+                  {category.name}
+                </CategoryChip>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {settings.show_trust_cards && (
+          <section className="mx-auto max-w-7xl px-6 pb-10">
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-4">
+              <TrustCard
+                title="Secure checkout"
+                description="Pay safely with a checkout flow built for confidence."
+                settings={settings}
+              />
+              <TrustCard
+                title="Fast browsing"
+                description="Clean product pages and responsive shopping experience."
+                settings={settings}
+              />
+              <TrustCard
+                title="Order updates"
+                description="Track orders, delivery status, and customer notifications."
+                settings={settings}
+              />
+              <TrustCard
+                title="Rewards ready"
+                description="Earn and redeem loyalty points when enabled."
+                settings={settings}
+              />
+            </div>
+          </section>
+        )}
+
+        {settings.show_loyalty_banner && (
+          <section className="mx-auto max-w-7xl px-6 pb-10">
+            <div
+              className="rounded-[2rem] p-6 text-white shadow-sm"
+              style={{
+                backgroundColor: settings.primary_color,
+              }}
+            >
+              <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-sm text-white/70">Rewards ready</p>
+                  <h2 className="mt-2 text-2xl font-bold">
+                    Earn points and unlock better shopping benefits.
+                  </h2>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-white/70">
+                    Sign in to track rewards, redeem points, save wishlist
+                    items, and receive customer updates.
+                  </p>
+                </div>
+
+                <a
+                  href="/customer/loyalty"
+                  className={`${getButtonClass(
+                    settings.button_style
+                  )} bg-white px-5 py-3 text-center font-semibold`}
+                  style={{
+                    color: settings.primary_color,
+                  }}
+                >
+                  View rewards
+                </a>
+              </div>
+            </div>
+          </section>
+        )}
 
         <section id="products" className="mx-auto max-w-7xl px-6 pb-20">
           <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
             <div>
-              <p className="text-sm font-semibold uppercase tracking-wide text-blue-600">
+              <p
+                className="text-sm font-semibold uppercase tracking-wide"
+                style={{
+                  color: settings.accent_color,
+                }}
+              >
                 Product catalog
               </p>
 
               <h3 className="mt-2 text-3xl font-bold tracking-tight">
-                {searchQuery ? `Search results for "${searchQuery}"` : "Shop products"}
+                {searchQuery
+                  ? `Search results for "${searchQuery}"`
+                  : settings.products_section_title || "Shop products"}
               </h3>
 
               <p className="mt-2 text-slate-500">
-                Browse products, options, and collections from {tenant.name}.
+                {settings.products_section_subtitle ||
+                  `Browse products, options, and collections from ${tenant.name}.`}
               </p>
             </div>
 
@@ -381,6 +451,7 @@ export default async function StorePage({
                   product={product}
                   tenantSlug={tenant.slug}
                   currency={currency}
+                  settings={settings}
                 />
               ))}
             </div>
@@ -391,7 +462,243 @@ export default async function StorePage({
   );
 }
 
-function StoreHeader({ tenant }: { tenant: any }) {
+function HeroSection({
+  tenant,
+  settings,
+  heroHeading,
+  heroSubheading,
+  heroImage,
+  featuredProducts,
+  totalProducts,
+  totalCategories,
+  currency,
+}: {
+  tenant: any;
+  settings: StorefrontSettings;
+  heroHeading: string;
+  heroSubheading: string;
+  heroImage: string | null;
+  featuredProducts: any[];
+  totalProducts: number;
+  totalCategories: number;
+  currency: string;
+}) {
+  const isCentered = settings.hero_layout === "centered";
+  const isMinimal = settings.hero_layout === "minimal";
+  const isBanner = settings.hero_layout === "banner";
+
+  return (
+    <section
+      className={`relative overflow-hidden text-white ${
+        isCentered || isMinimal ? "text-center" : ""
+      }`}
+      style={{
+        backgroundColor: settings.primary_color,
+      }}
+    >
+      <div
+        className="absolute inset-0 opacity-70"
+        style={{
+          background: `radial-gradient(circle at top right, ${settings.accent_color}55, transparent 35%), radial-gradient(circle at top left, rgba(168,85,247,0.22), transparent 35%)`,
+        }}
+      />
+
+      {(isBanner || heroImage) && heroImage && (
+        <img
+          src={heroImage}
+          alt={`${tenant.name} hero`}
+          className={`absolute inset-0 h-full w-full object-cover ${
+            isBanner ? "opacity-35" : "opacity-20"
+          }`}
+        />
+      )}
+
+      <div
+        className={`relative mx-auto grid max-w-7xl grid-cols-1 gap-12 px-6 py-16 lg:py-24 ${
+          isCentered || isMinimal
+            ? "place-items-center"
+            : "lg:grid-cols-2 lg:items-center"
+        }`}
+      >
+        <div className={isCentered || isMinimal ? "max-w-4xl" : ""}>
+          <div className="mb-6 inline-flex rounded-full border border-white/10 bg-white/10 px-4 py-2 text-sm text-slate-200">
+            {settings.hero_badge || "Live store · Powered by StoreForge"}
+          </div>
+
+          <div
+            className={`flex items-center gap-4 ${
+              isCentered || isMinimal ? "justify-center" : ""
+            }`}
+          >
+            {tenant.logo_url ? (
+              <img
+                src={tenant.logo_url}
+                alt={tenant.name}
+                className="h-16 w-16 rounded-2xl border border-white/20 object-cover"
+              />
+            ) : (
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white text-2xl font-bold text-slate-950">
+                {tenant.name?.slice(0, 1) || "S"}
+              </div>
+            )}
+
+            <div>
+              <p className="text-sm text-slate-300">Welcome to</p>
+              <h1 className="text-4xl font-bold tracking-tight md:text-6xl">
+                {heroHeading}
+              </h1>
+            </div>
+          </div>
+
+          <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-300">
+            {heroSubheading}
+          </p>
+
+          <div
+            className={`mt-10 flex flex-col gap-4 sm:flex-row ${
+              isCentered || isMinimal ? "justify-center" : ""
+            }`}
+          >
+            <a
+              href="#products"
+              className={`${getButtonClass(
+                settings.button_style
+              )} bg-white px-7 py-4 text-center font-semibold`}
+              style={{
+                color: settings.primary_color,
+              }}
+            >
+              Shop products
+            </a>
+
+            <a
+              href={`/store/${tenant.slug}/cart`}
+              className={`${getButtonClass(
+                settings.button_style
+              )} border border-white/15 px-7 py-4 text-center font-semibold text-white hover:bg-white/10`}
+            >
+              View cart
+            </a>
+          </div>
+
+          {!isMinimal && (
+            <div className="mt-10 grid grid-cols-3 gap-4 border-t border-white/10 pt-8">
+              <HeroStat label="Products" value={String(totalProducts)} />
+              <HeroStat
+                label="Categories"
+                value={String(totalCategories)}
+              />
+              <HeroStat label="Checkout" value="Secure" />
+            </div>
+          )}
+        </div>
+
+        {!isCentered &&
+          !isMinimal &&
+          settings.show_featured_products &&
+          settings.hero_layout !== "banner" && (
+            <FeaturedPreview
+              tenant={tenant}
+              settings={settings}
+              featuredProducts={featuredProducts}
+              currency={currency}
+            />
+          )}
+      </div>
+    </section>
+  );
+}
+
+function FeaturedPreview({
+  tenant,
+  settings,
+  featuredProducts,
+  currency,
+}: {
+  tenant: any;
+  settings: StorefrontSettings;
+  featuredProducts: any[];
+  currency: string;
+}) {
+  return (
+    <div className="rounded-[2rem] border border-white/10 bg-white/10 p-4 shadow-2xl backdrop-blur">
+      <div className="rounded-[1.5rem] bg-white p-5 text-slate-950">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+          <div>
+            <p className="text-sm text-slate-500">Featured products</p>
+            <h2 className="text-xl font-bold">
+              {settings.featured_section_title || "Popular right now"}
+            </h2>
+          </div>
+
+          <span
+            className="rounded-full px-3 py-1 text-xs font-semibold text-white"
+            style={{
+              backgroundColor: settings.accent_color,
+            }}
+          >
+            Live
+          </span>
+        </div>
+
+        <p className="mt-3 text-sm text-slate-500">
+          {settings.featured_section_subtitle ||
+            "Explore featured products from this store."}
+        </p>
+
+        <div className="mt-5 grid grid-cols-2 gap-4">
+          {featuredProducts.length > 0 ? (
+            featuredProducts.map((product: any) => {
+              const lowestPrice = getLowestPrice(product);
+
+              return (
+                <a
+                  key={product.id}
+                  href={`/store/${tenant.slug}/products/${product.id}`}
+                  className="rounded-2xl border border-slate-100 bg-slate-50 p-3 transition hover:-translate-y-1 hover:shadow-md"
+                >
+                  <div className="aspect-square overflow-hidden rounded-xl bg-slate-100">
+                    {product.image_url ? (
+                      <img
+                        src={product.image_url}
+                        alt={product.name}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-xs text-slate-400">
+                        No image
+                      </div>
+                    )}
+                  </div>
+
+                  <p className="mt-3 truncate text-sm font-semibold">
+                    {product.name}
+                  </p>
+
+                  <p className="mt-1 text-sm font-bold">
+                    {currency} {lowestPrice.toFixed(2)}
+                  </p>
+                </a>
+              );
+            })
+          ) : (
+            <div className="col-span-2 rounded-2xl bg-slate-50 p-8 text-center text-sm text-slate-500">
+              Products will appear here once the merchant adds items.
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StoreHeader({
+  tenant,
+  settings,
+}: {
+  tenant: any;
+  settings: StorefrontSettings;
+}) {
   return (
     <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur">
       <div className="mx-auto flex max-w-7xl flex-col gap-5 px-6 py-5 lg:flex-row lg:items-center lg:justify-between">
@@ -403,7 +710,12 @@ function StoreHeader({ tenant }: { tenant: any }) {
               className="h-12 w-12 rounded-2xl border object-cover"
             />
           ) : (
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-950 text-lg font-bold text-white">
+            <div
+              className="flex h-12 w-12 items-center justify-center rounded-2xl text-lg font-bold text-white"
+              style={{
+                backgroundColor: settings.primary_color,
+              }}
+            >
               {tenant.name?.slice(0, 1) || "S"}
             </div>
           )}
@@ -449,7 +761,12 @@ function StoreHeader({ tenant }: { tenant: any }) {
 
           <a
             href={`/store/${tenant.slug}/cart`}
-            className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+            className={`${getButtonClass(
+              settings.button_style
+            )} px-4 py-2 text-sm font-medium text-white`}
+            style={{
+              backgroundColor: settings.primary_color,
+            }}
           >
             Cart
           </a>
@@ -463,10 +780,12 @@ function ProductCard({
   product,
   tenantSlug,
   currency,
+  settings,
 }: {
   product: any;
   tenantSlug: string;
   currency: string;
+  settings: StorefrontSettings;
 }) {
   const category = Array.isArray(product.category)
     ? product.category[0]
@@ -478,8 +797,17 @@ function ProductCard({
 
   const lowestVariantPrice = getLowestPrice(product);
 
+  const cardClass =
+    settings.product_card_style === "minimal"
+      ? "overflow-hidden border-b border-slate-200 bg-white transition hover:bg-slate-50"
+      : settings.product_card_style === "bordered"
+      ? "group overflow-hidden rounded-3xl border-2 border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-xl"
+      : settings.product_card_style === "image_focus"
+      ? "group overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-xl"
+      : "group overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-xl";
+
   return (
-    <div className="group overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-xl">
+    <div className={cardClass}>
       <a
         href={`/store/${tenantSlug}/products/${product.id}`}
         className="block aspect-square overflow-hidden bg-slate-100"
@@ -506,7 +834,12 @@ function ProductCard({
           )}
 
           {activeVariants.length > 0 && (
-            <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-700">
+            <span
+              className="rounded-full px-3 py-1 text-xs font-medium text-white"
+              style={{
+                backgroundColor: settings.accent_color,
+              }}
+            >
               {activeVariants.length} option(s)
             </span>
           )}
@@ -526,7 +859,12 @@ function ProductCard({
 
           <a
             href={`/store/${tenantSlug}/products/${product.id}`}
-            className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+            className={`${getButtonClass(
+              settings.button_style
+            )} px-4 py-2 text-sm font-medium text-white`}
+            style={{
+              backgroundColor: settings.primary_color,
+            }}
           >
             View
           </a>
@@ -539,20 +877,30 @@ function ProductCard({
 function CategoryChip({
   href,
   active,
+  settings,
   children,
 }: {
   href: string;
   active?: boolean;
+  settings: StorefrontSettings;
   children: ReactNode;
 }) {
+  const base =
+    settings.category_style === "tabs"
+      ? "whitespace-nowrap border-b px-5 py-3 text-sm font-medium transition"
+      : settings.category_style === "cards"
+      ? "rounded-2xl border px-5 py-5 text-sm font-medium transition"
+      : "whitespace-nowrap rounded-2xl border px-5 py-3 text-sm font-medium transition";
+
   return (
     <a
       href={href}
-      className={`whitespace-nowrap rounded-2xl border px-5 py-3 text-sm font-medium transition ${
-        active
-          ? "border-slate-950 bg-slate-950 text-white"
-          : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-      }`}
+      className={base}
+      style={{
+        backgroundColor: active ? settings.primary_color : "#ffffff",
+        color: active ? "#ffffff" : "#475569",
+        borderColor: active ? settings.primary_color : "#e2e8f0",
+      }}
     >
       {children}
     </a>
@@ -571,13 +919,20 @@ function HeroStat({ label, value }: { label: string; value: string }) {
 function TrustCard({
   title,
   description,
+  settings,
 }: {
   title: string;
   description: string;
+  settings: StorefrontSettings;
 }) {
   return (
     <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-white">
+      <div
+        className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl text-white"
+        style={{
+          backgroundColor: settings.primary_color,
+        }}
+      >
         ✓
       </div>
 
@@ -586,6 +941,22 @@ function TrustCard({
       <p className="mt-2 text-sm leading-6 text-slate-500">{description}</p>
     </div>
   );
+}
+
+function getButtonClass(buttonStyle: string) {
+  if (buttonStyle === "pill") {
+    return "rounded-full";
+  }
+
+  if (buttonStyle === "sharp") {
+    return "rounded-none";
+  }
+
+  if (buttonStyle === "soft") {
+    return "rounded-xl";
+  }
+
+  return "rounded-2xl";
 }
 
 function getLowestPrice(product: any) {

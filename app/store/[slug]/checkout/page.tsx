@@ -106,6 +106,75 @@ type LoyaltyAccount = {
   status: string;
 };
 
+type StorefrontSettings = {
+  id: string;
+  tenant_id: string;
+  theme_preset: string;
+  primary_color: string;
+  accent_color: string;
+  background_color: string;
+  text_color: string;
+  hero_layout: string;
+  product_card_style: string;
+  category_style: string;
+  button_style: string;
+  show_search: boolean;
+  show_categories: boolean;
+  show_featured_products: boolean;
+  show_trust_cards: boolean;
+  show_reviews_section: boolean;
+  show_loyalty_banner: boolean;
+  show_coupon_banner: boolean;
+  hero_badge: string | null;
+  hero_heading: string | null;
+  hero_subheading: string | null;
+  featured_section_title: string | null;
+  featured_section_subtitle: string | null;
+  products_section_title: string | null;
+  products_section_subtitle: string | null;
+  hero_image_url: string | null;
+  promotional_banner_url: string | null;
+  status: string;
+};
+
+const defaultStorefrontSettings: StorefrontSettings = {
+  id: "default",
+  tenant_id: "default",
+  theme_preset: "modern_dark",
+  primary_color: "#020617",
+  accent_color: "#2563eb",
+  background_color: "#f8fafc",
+  text_color: "#0f172a",
+  hero_layout: "split",
+  product_card_style: "rounded",
+  category_style: "pills",
+  button_style: "rounded",
+  show_search: true,
+  show_categories: true,
+  show_featured_products: true,
+  show_trust_cards: true,
+  show_reviews_section: true,
+  show_loyalty_banner: true,
+  show_coupon_banner: true,
+  hero_badge: "Live store · Powered by StoreForge",
+  hero_heading: null,
+  hero_subheading: null,
+  featured_section_title: "Popular right now",
+  featured_section_subtitle: "Explore featured products from this store.",
+  products_section_title: "Shop products",
+  products_section_subtitle: "Browse products, options, and collections.",
+  hero_image_url: null,
+  promotional_banner_url: null,
+  status: "active",
+};
+
+function getButtonClass(buttonStyle: string) {
+  if (buttonStyle === "pill") return "rounded-full";
+  if (buttonStyle === "sharp") return "rounded-none";
+  if (buttonStyle === "soft") return "rounded-xl";
+  return "rounded-2xl";
+}
+
 export default function StoreCheckoutPage() {
   const supabase = createClient();
   const params = useParams();
@@ -114,6 +183,8 @@ export default function StoreCheckoutPage() {
   const slug = params.slug as string;
 
   const [tenant, setTenant] = useState<Tenant | null>(null);
+  const [storefrontSettings, setStorefrontSettings] =
+  useState<StorefrontSettings>(defaultStorefrontSettings);
   const [cart, setCart] = useState<Cart | null>(null);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [customerProfile, setCustomerProfile] =
@@ -261,6 +332,22 @@ export default function StoreCheckoutPage() {
       }
 
       setTenant(tenantData);
+
+      await supabase.rpc("ensure_storefront_settings", {
+  p_tenant_id: tenantData.id,
+});
+
+const { data: storefrontSettingsData } = await supabase
+  .from("storefront_settings")
+  .select("*")
+  .eq("tenant_id", tenantData.id)
+  .eq("status", "active")
+  .maybeSingle();
+
+setStorefrontSettings({
+  ...defaultStorefrontSettings,
+  ...(storefrontSettingsData || {}),
+});
 
       const { data: cartData, error: cartError } = await supabase
         .from("carts")
@@ -778,7 +865,7 @@ export default function StoreCheckoutPage() {
   if (!cart || cartItems.length === 0) {
     return (
       <div className="min-h-screen bg-slate-50">
-        <CheckoutHeader tenant={tenant} />
+        <CheckoutHeader tenant={tenant} settings={storefrontSettings} />
 
         <div className="max-w-3xl mx-auto px-6 py-16">
           <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-10 text-center">
@@ -806,7 +893,7 @@ export default function StoreCheckoutPage() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <CheckoutHeader tenant={tenant} />
+      <CheckoutHeader tenant={tenant} settings={storefrontSettings} />
 
       <main className="max-w-7xl mx-auto px-6 py-8 lg:py-12">
         <div className="mb-8 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
@@ -1140,7 +1227,13 @@ export default function StoreCheckoutPage() {
   );
 }
 
-function CheckoutHeader({ tenant }: { tenant: Tenant }) {
+function CheckoutHeader({
+  tenant,
+  settings,
+}: {
+  tenant: Tenant;
+  settings: StorefrontSettings;
+}) {
   return (
     <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur">
       <div className="mx-auto flex max-w-7xl flex-col gap-5 px-6 py-5 lg:flex-row lg:items-center lg:justify-between">
@@ -1152,7 +1245,10 @@ function CheckoutHeader({ tenant }: { tenant: Tenant }) {
               className="h-12 w-12 rounded-2xl border object-cover"
             />
           ) : (
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-950 text-lg font-bold text-white">
+            <div
+              className="flex h-12 w-12 items-center justify-center rounded-2xl text-lg font-bold text-white"
+              style={{ backgroundColor: settings.primary_color }}
+            >
               {tenant.name.slice(0, 1)}
             </div>
           )}
@@ -1203,7 +1299,10 @@ function CheckoutHeader({ tenant }: { tenant: Tenant }) {
 
           <a
             href={`/store/${tenant.slug}/cart`}
-            className="rounded-xl bg-slate-950 px-4 py-2 text-sm text-white hover:bg-slate-800"
+            className={`${getButtonClass(
+              settings.button_style
+            )} px-4 py-2 text-sm text-white`}
+            style={{ backgroundColor: settings.primary_color }}
           >
             Cart
           </a>

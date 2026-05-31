@@ -11,6 +11,68 @@ type ProductPageProps = {
   };
 };
 
+type StorefrontSettings = {
+  id: string;
+  tenant_id: string;
+  theme_preset: string;
+  primary_color: string;
+  accent_color: string;
+  background_color: string;
+  text_color: string;
+  hero_layout: string;
+  product_card_style: string;
+  category_style: string;
+  button_style: string;
+  show_search: boolean;
+  show_categories: boolean;
+  show_featured_products: boolean;
+  show_trust_cards: boolean;
+  show_reviews_section: boolean;
+  show_loyalty_banner: boolean;
+  show_coupon_banner: boolean;
+  hero_badge: string | null;
+  hero_heading: string | null;
+  hero_subheading: string | null;
+  featured_section_title: string | null;
+  featured_section_subtitle: string | null;
+  products_section_title: string | null;
+  products_section_subtitle: string | null;
+  hero_image_url: string | null;
+  promotional_banner_url: string | null;
+  status: string;
+};
+
+const defaultStorefrontSettings: StorefrontSettings = {
+  id: "default",
+  tenant_id: "default",
+  theme_preset: "modern_dark",
+  primary_color: "#020617",
+  accent_color: "#2563eb",
+  background_color: "#f8fafc",
+  text_color: "#0f172a",
+  hero_layout: "split",
+  product_card_style: "rounded",
+  category_style: "pills",
+  button_style: "rounded",
+  show_search: true,
+  show_categories: true,
+  show_featured_products: true,
+  show_trust_cards: true,
+  show_reviews_section: true,
+  show_loyalty_banner: true,
+  show_coupon_banner: true,
+  hero_badge: "Live store · Powered by StoreForge",
+  hero_heading: null,
+  hero_subheading: null,
+  featured_section_title: "Popular right now",
+  featured_section_subtitle: "Explore featured products from this store.",
+  products_section_title: "Shop products",
+  products_section_subtitle: "Browse products, options, and collections.",
+  hero_image_url: null,
+  promotional_banner_url: null,
+  status: "active",
+};
+
 function formatMoney(currency: string, amount: number) {
   return `${currency} ${Number(amount || 0).toFixed(2)}`;
 }
@@ -81,7 +143,25 @@ export default async function ProductPage({ params }: ProductPageProps) {
 
   if (!tenant) notFound();
 
-  const reviewsEnabled = tenant.reviews_enabled ?? true;
+  await supabase.rpc("ensure_storefront_settings", {
+    p_tenant_id: tenant.id,
+  });
+
+  const { data: settingsData } = await supabase
+    .from("storefront_settings")
+    .select("*")
+    .eq("tenant_id", tenant.id)
+    .eq("status", "active")
+    .maybeSingle();
+
+  const settings: StorefrontSettings = {
+    ...defaultStorefrontSettings,
+    ...(settingsData || {}),
+  };
+
+  const reviewsEnabled =
+    (tenant.reviews_enabled ?? true) && settings.show_reviews_section;
+
   const reviewModerationEnabled = tenant.review_moderation_enabled ?? false;
   const currency = tenant.currency || "GHS";
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
@@ -263,7 +343,13 @@ export default async function ProductPage({ params }: ProductPageProps) {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-950">
+    <div
+      className="min-h-screen"
+      style={{
+        backgroundColor: settings.background_color,
+        color: settings.text_color,
+      }}
+    >
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
@@ -271,17 +357,27 @@ export default async function ProductPage({ params }: ProductPageProps) {
         }}
       />
 
-      <StoreHeader tenant={tenant} />
+      <StoreHeader tenant={tenant} settings={settings} />
 
-      {tenant.banner_url && (
+      {(tenant.banner_url || settings.hero_image_url) && (
         <section className="mx-auto max-w-7xl px-6 pt-8">
-          <div className="relative h-48 overflow-hidden rounded-[2rem] border border-slate-200 bg-slate-200">
+          <div
+            className="relative h-48 overflow-hidden rounded-[2rem] border border-slate-200"
+            style={{
+              backgroundColor: settings.primary_color,
+            }}
+          >
             <img
-              src={tenant.banner_url}
+              src={settings.hero_image_url || tenant.banner_url}
               alt={`${tenant.name} banner`}
-              className="h-full w-full object-cover"
+              className="h-full w-full object-cover opacity-70"
             />
-            <div className="absolute inset-0 bg-gradient-to-r from-slate-950/55 to-transparent" />
+            <div
+              className="absolute inset-0"
+              style={{
+                background: `linear-gradient(to right, ${settings.primary_color}dd, transparent)`,
+              }}
+            />
             <div className="absolute bottom-6 left-6 text-white">
               <p className="text-sm text-white/75">Shopping at</p>
               <h1 className="text-2xl font-bold">{tenant.name}</h1>
@@ -293,7 +389,9 @@ export default async function ProductPage({ params }: ProductPageProps) {
       <main className="mx-auto max-w-7xl px-6 py-10">
         <a
           href={`/store/${tenant.slug}`}
-          className="inline-flex items-center rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-500 shadow-sm hover:text-slate-950"
+          className={`${getButtonClass(
+            settings.button_style
+          )} inline-flex items-center border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-500 shadow-sm hover:text-slate-950`}
         >
           ← Back to store
         </a>
@@ -316,20 +414,25 @@ export default async function ProductPage({ params }: ProductPageProps) {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-              <TrustCard
-                title="Secure checkout"
-                description="Pay safely with trusted checkout."
-              />
-              <TrustCard
-                title="Order updates"
-                description="Track payment and delivery status."
-              />
-              <TrustCard
-                title="Rewards ready"
-                description="Earn or redeem points when enabled."
-              />
-            </div>
+            {settings.show_trust_cards && (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <TrustCard
+                  title="Secure checkout"
+                  description="Pay safely with trusted checkout."
+                  settings={settings}
+                />
+                <TrustCard
+                  title="Order updates"
+                  description="Track payment and delivery status."
+                  settings={settings}
+                />
+                <TrustCard
+                  title="Rewards ready"
+                  description="Earn or redeem points when enabled."
+                  settings={settings}
+                />
+              </div>
+            )}
           </div>
 
           <div className="lg:sticky lg:top-28">
@@ -338,7 +441,10 @@ export default async function ProductPage({ params }: ProductPageProps) {
                 {category && (
                   <a
                     href={`/store/${tenant.slug}/categories/${category.slug}`}
-                    className="rounded-full bg-blue-100 px-3 py-1 text-sm font-medium text-blue-700"
+                    className="rounded-full px-3 py-1 text-sm font-medium text-white"
+                    style={{
+                      backgroundColor: settings.accent_color,
+                    }}
                   >
                     {category.name}
                   </a>
@@ -371,7 +477,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
                 )}
               </div>
 
-              <h1 className="text-4xl font-bold leading-tight tracking-tight md:text-5xl">
+              <h1 className="text-4xl font-bold leading-tight tracking-tight text-slate-950 md:text-5xl">
                 {product.name}
               </h1>
 
@@ -379,14 +485,24 @@ export default async function ProductPage({ params }: ProductPageProps) {
                 {product.description || "No product description provided."}
               </p>
 
-              <div className="mt-6 rounded-3xl border border-slate-200 bg-slate-50 p-5">
+              <div
+                className="mt-6 rounded-3xl border border-slate-200 p-5"
+                style={{
+                  backgroundColor: `${settings.accent_color}10`,
+                }}
+              >
                 <p className="text-sm text-slate-500">
                   {variants && variants.length > 0
                     ? "Starting from"
                     : "Price"}
                 </p>
 
-                <p className="mt-1 text-4xl font-bold text-slate-950">
+                <p
+                  className="mt-1 text-4xl font-bold"
+                  style={{
+                    color: settings.primary_color,
+                  }}
+                >
                   {formatMoney(currency, lowestVariantPrice)}
                 </p>
 
@@ -414,7 +530,9 @@ export default async function ProductPage({ params }: ProductPageProps) {
                   <a
                     href={whatsappHref}
                     target="_blank"
-                    className="flex-1 rounded-2xl bg-green-600 px-6 py-4 text-center font-semibold text-white hover:bg-green-700"
+                    className={`${getButtonClass(
+                      settings.button_style
+                    )} flex-1 bg-green-600 px-6 py-4 text-center font-semibold text-white hover:bg-green-700`}
                   >
                     Ask on WhatsApp
                   </a>
@@ -423,7 +541,9 @@ export default async function ProductPage({ params }: ProductPageProps) {
                 {tenant.support_phone && (
                   <a
                     href={`tel:${tenant.support_phone}`}
-                    className="flex-1 rounded-2xl border border-slate-200 px-6 py-4 text-center font-semibold hover:bg-slate-50"
+                    className={`${getButtonClass(
+                      settings.button_style
+                    )} flex-1 border border-slate-200 px-6 py-4 text-center font-semibold hover:bg-slate-50`}
                   >
                     Call store
                   </a>
@@ -432,6 +552,42 @@ export default async function ProductPage({ params }: ProductPageProps) {
             </div>
           </div>
         </section>
+
+        {settings.show_loyalty_banner && (
+          <section className="mt-10">
+            <div
+              className="rounded-[2rem] p-6 text-white shadow-sm"
+              style={{
+                backgroundColor: settings.primary_color,
+              }}
+            >
+              <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-sm text-white/70">Rewards ready</p>
+                  <h2 className="mt-2 text-2xl font-bold">
+                    Save this product and earn rewards when you shop.
+                  </h2>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-white/70">
+                    Use wishlist, loyalty, notifications, and order tracking to
+                    get a better shopping experience.
+                  </p>
+                </div>
+
+                <a
+                  href="/customer/loyalty"
+                  className={`${getButtonClass(
+                    settings.button_style
+                  )} bg-white px-5 py-3 text-center font-semibold`}
+                  style={{
+                    color: settings.primary_color,
+                  }}
+                >
+                  View rewards
+                </a>
+              </div>
+            </div>
+          </section>
+        )}
 
         <section className="mt-10 grid grid-cols-1 gap-8 lg:grid-cols-3">
           <InfoPanel title="Store support">
@@ -508,99 +664,111 @@ export default async function ProductPage({ params }: ProductPageProps) {
           </InfoPanel>
         </section>
 
-        <section className="mt-12 grid grid-cols-1 gap-8 lg:grid-cols-3">
-          <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm lg:col-span-2">
-            <div className="mb-6 flex items-center justify-between gap-4">
-              <div>
-                <p className="text-sm font-semibold uppercase tracking-wide text-blue-600">
-                  Reviews
-                </p>
-
-                <h2 className="mt-2 text-2xl font-bold text-slate-950">
-                  Customer reviews
-                </h2>
-
-                <p className="mt-1 text-slate-500">
-                  {reviews?.length || 0} review(s)
-                </p>
-              </div>
-
-              {reviews && reviews.length > 0 && (
-                <p className="rounded-2xl bg-yellow-100 px-4 py-2 text-lg font-bold text-yellow-800">
-                  ⭐ {averageRating.toFixed(1)}
-                </p>
-              )}
-            </div>
-
-            {!reviews || reviews.length === 0 ? (
-              <div className="rounded-3xl bg-slate-50 p-8 text-center">
-                <p className="text-slate-500">No reviews yet.</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {reviews.map((review: any) => (
-                  <div
-                    key={review.id}
-                    className="rounded-2xl border border-slate-200 p-5"
+        {settings.show_reviews_section && (
+          <section className="mt-12 grid grid-cols-1 gap-8 lg:grid-cols-3">
+            <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm lg:col-span-2">
+              <div className="mb-6 flex items-center justify-between gap-4">
+                <div>
+                  <p
+                    className="text-sm font-semibold uppercase tracking-wide"
+                    style={{
+                      color: settings.accent_color,
+                    }}
                   >
-                    <div className="flex items-center justify-between gap-4">
-                      <p className="font-semibold">
-                        {"⭐".repeat(Number(review.rating))}
-                      </p>
+                    Reviews
+                  </p>
 
-                      {review.is_verified_purchase && (
-                        <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700">
-                          Verified purchase
-                        </span>
-                      )}
-                    </div>
+                  <h2 className="mt-2 text-2xl font-bold text-slate-950">
+                    Customer reviews
+                  </h2>
 
-                    {review.title && (
-                      <h3 className="mt-3 font-bold text-slate-950">
-                        {review.title}
-                      </h3>
-                    )}
+                  <p className="mt-1 text-slate-500">
+                    {reviews?.length || 0} review(s)
+                  </p>
+                </div>
 
-                    {review.comment && (
-                      <p className="mt-2 leading-7 text-slate-600">
-                        {review.comment}
-                      </p>
-                    )}
-
-                    <p className="mt-3 text-xs text-slate-400">
-                      {new Date(review.created_at).toLocaleDateString()}
-                    </p>
-                  </div>
-                ))}
+                {reviews && reviews.length > 0 && (
+                  <p className="rounded-2xl bg-yellow-100 px-4 py-2 text-lg font-bold text-yellow-800">
+                    ⭐ {averageRating.toFixed(1)}
+                  </p>
+                )}
               </div>
-            )}
-          </div>
 
-          {reviewsEnabled ? (
-            <div className="space-y-4">
-              {reviewModerationEnabled && (
-                <div className="rounded-2xl border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-700">
-                  Reviews for this store are moderated. Your review will appear
-                  after approval.
+              {!reviews || reviews.length === 0 ? (
+                <div className="rounded-3xl bg-slate-50 p-8 text-center">
+                  <p className="text-slate-500">No reviews yet.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {reviews.map((review: any) => (
+                    <div
+                      key={review.id}
+                      className="rounded-2xl border border-slate-200 p-5"
+                    >
+                      <div className="flex items-center justify-between gap-4">
+                        <p className="font-semibold">
+                          {"⭐".repeat(Number(review.rating))}
+                        </p>
+
+                        {review.is_verified_purchase && (
+                          <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700">
+                            Verified purchase
+                          </span>
+                        )}
+                      </div>
+
+                      {review.title && (
+                        <h3 className="mt-3 font-bold text-slate-950">
+                          {review.title}
+                        </h3>
+                      )}
+
+                      {review.comment && (
+                        <p className="mt-2 leading-7 text-slate-600">
+                          {review.comment}
+                        </p>
+                      )}
+
+                      <p className="mt-3 text-xs text-slate-400">
+                        {new Date(review.created_at).toLocaleDateString()}
+                      </p>
+                    </div>
+                  ))}
                 </div>
               )}
+            </div>
 
-              <ReviewForm productId={product.id} />
-            </div>
-          ) : (
-            <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
-              <h3 className="text-xl font-bold">Reviews disabled</h3>
-              <p className="mt-2 text-slate-500">
-                This store is not accepting product reviews right now.
-              </p>
-            </div>
-          )}
-        </section>
+            {reviewsEnabled ? (
+              <div className="space-y-4">
+                {reviewModerationEnabled && (
+                  <div className="rounded-2xl border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-700">
+                    Reviews for this store are moderated. Your review will
+                    appear after approval.
+                  </div>
+                )}
+
+                <ReviewForm productId={product.id} />
+              </div>
+            ) : (
+              <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+                <h3 className="text-xl font-bold">Reviews disabled</h3>
+                <p className="mt-2 text-slate-500">
+                  This store is not accepting product reviews right now.
+                </p>
+              </div>
+            )}
+          </section>
+        )}
 
         <section className="mt-12 pb-20">
           <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
             <div>
-              <p className="text-sm font-semibold uppercase tracking-wide text-blue-600">
+              <p
+                className="text-sm font-semibold uppercase tracking-wide"
+                style={{
+                  color: settings.accent_color,
+                }}
+              >
                 More to explore
               </p>
 
@@ -636,7 +804,9 @@ export default async function ProductPage({ params }: ProductPageProps) {
                   <a
                     key={item.id}
                     href={`/store/${tenant.slug}/products/${item.id}`}
-                    className="group overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-xl"
+                    className={getRelatedProductCardClass(
+                      settings.product_card_style
+                    )}
                   >
                     <div className="aspect-square overflow-hidden bg-slate-100">
                       {item.image_url ? (
@@ -673,7 +843,12 @@ export default async function ProductPage({ params }: ProductPageProps) {
                           {formatMoney(currency, lowestPrice)}
                         </p>
 
-                        <span className="text-sm font-medium text-slate-500">
+                        <span
+                          className="text-sm font-medium"
+                          style={{
+                            color: settings.accent_color,
+                          }}
+                        >
                           View
                         </span>
                       </div>
@@ -689,7 +864,13 @@ export default async function ProductPage({ params }: ProductPageProps) {
   );
 }
 
-function StoreHeader({ tenant }: { tenant: any }) {
+function StoreHeader({
+  tenant,
+  settings,
+}: {
+  tenant: any;
+  settings: StorefrontSettings;
+}) {
   return (
     <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur">
       <div className="mx-auto flex max-w-7xl flex-col gap-5 px-6 py-5 lg:flex-row lg:items-center lg:justify-between">
@@ -701,7 +882,12 @@ function StoreHeader({ tenant }: { tenant: any }) {
               className="h-12 w-12 rounded-2xl border object-cover"
             />
           ) : (
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-950 text-lg font-bold text-white">
+            <div
+              className="flex h-12 w-12 items-center justify-center rounded-2xl text-lg font-bold text-white"
+              style={{
+                backgroundColor: settings.primary_color,
+              }}
+            >
               {tenant.name?.slice(0, 1) || "S"}
             </div>
           )}
@@ -752,7 +938,12 @@ function StoreHeader({ tenant }: { tenant: any }) {
 
           <a
             href={`/store/${tenant.slug}/cart`}
-            className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+            className={`${getButtonClass(
+              settings.button_style
+            )} px-4 py-2 text-sm font-medium text-white`}
+            style={{
+              backgroundColor: settings.primary_color,
+            }}
           >
             Cart
           </a>
@@ -765,13 +956,20 @@ function StoreHeader({ tenant }: { tenant: any }) {
 function TrustCard({
   title,
   description,
+  settings,
 }: {
   title: string;
   description: string;
+  settings: StorefrontSettings;
 }) {
   return (
     <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-white">
+      <div
+        className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl text-white"
+        style={{
+          backgroundColor: settings.primary_color,
+        }}
+      >
         ✓
       </div>
 
@@ -806,4 +1004,36 @@ function InfoLine({ label, value }: { label: string; value: string }) {
       <p className="mt-1 leading-6 text-slate-700">{value}</p>
     </div>
   );
+}
+
+function getButtonClass(buttonStyle: string) {
+  if (buttonStyle === "pill") {
+    return "rounded-full";
+  }
+
+  if (buttonStyle === "sharp") {
+    return "rounded-none";
+  }
+
+  if (buttonStyle === "soft") {
+    return "rounded-xl";
+  }
+
+  return "rounded-2xl";
+}
+
+function getRelatedProductCardClass(productCardStyle: string) {
+  if (productCardStyle === "minimal") {
+    return "group overflow-hidden border-b border-slate-200 bg-white transition hover:bg-slate-50";
+  }
+
+  if (productCardStyle === "bordered") {
+    return "group overflow-hidden rounded-3xl border-2 border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-xl";
+  }
+
+  if (productCardStyle === "image_focus") {
+    return "group overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-xl";
+  }
+
+  return "group overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-xl";
 }

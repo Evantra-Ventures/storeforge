@@ -180,7 +180,7 @@ export default async function MyOrdersPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) redirect("/login");
+  if (!user) redirect("/login?redirect=/my-orders");
 
   const { data: orders } = await supabase
     .from("orders")

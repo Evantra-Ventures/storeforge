@@ -113,9 +113,7 @@ export default async function WishlistPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) {
-    redirect("/login");
-  }
+  if (!user) redirect("/login?redirect=/wishlist");
 
   const { count: unreadNotificationsCount } = await supabase
     .from("customer_notifications")

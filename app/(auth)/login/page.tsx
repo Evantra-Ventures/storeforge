@@ -1,11 +1,22 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
-export default function LoginPage() {
+function getSafeRedirect(value: string | null) {
+  if (!value) return "";
+  if (!value.startsWith("/")) return "";
+  if (value.startsWith("//")) return "";
+  return value;
+}
+
+function LoginContent() {
   const supabase = createClient();
+  const searchParams = useSearchParams();
+
+  const redirectTo = getSafeRedirect(searchParams.get("redirect"));
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -28,7 +39,7 @@ export default function LoginPage() {
         return;
       }
 
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password,
       });
@@ -38,7 +49,32 @@ export default function LoginPage() {
         return;
       }
 
-      window.location.href = "/products";
+      const userId = data.user?.id;
+
+      if (!userId) {
+        setErrorMessage("Login failed. Please try again.");
+        return;
+      }
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role, tenant_id")
+        .eq("id", userId)
+        .maybeSingle();
+
+      const role = profile?.role || "customer";
+
+      if (redirectTo) {
+        window.location.href = redirectTo;
+        return;
+      }
+
+      if (["owner", "store_owner", "admin", "super_admin"].includes(role)) {
+        window.location.href = profile?.tenant_id ? "/dashboard" : "/onboarding";
+        return;
+      }
+
+      window.location.href = "/customer/profile";
     } catch (error) {
       console.error(error);
       setErrorMessage("Login failed. Please try again.");
@@ -46,6 +82,10 @@ export default function LoginPage() {
       setLoading(false);
     }
   };
+
+  const signupHref = redirectTo
+    ? `/signup?redirect=${encodeURIComponent(redirectTo)}`
+    : "/signup";
 
   return (
     <main className="min-h-screen bg-slate-950 text-white">
@@ -65,35 +105,35 @@ export default function LoginPage() {
             </div>
 
             <h1 className="text-5xl font-bold leading-tight tracking-tight">
-              Manage your store, orders, customers, and growth.
+              Sign in to shop, track orders, or manage your store.
             </h1>
 
             <p className="mt-6 text-lg leading-8 text-slate-300">
-              Log in to your StoreForge dashboard to manage products, track
-              orders, reward customers, send notifications, and keep your online
-              store running smoothly.
+              Customers can manage orders, wishlist, notifications, and
+              rewards. Merchants can access products, orders, marketing,
+              analytics, and storefront settings.
             </p>
 
             <div className="mt-10 grid grid-cols-3 gap-4 border-t border-white/10 pt-8">
               <div>
-                <p className="text-3xl font-bold">24/7</p>
-                <p className="mt-1 text-sm text-slate-400">store access</p>
+                <p className="text-3xl font-bold">Track</p>
+                <p className="mt-1 text-sm text-slate-400">orders</p>
               </div>
 
               <div>
-                <p className="text-3xl font-bold">Smart</p>
-                <p className="mt-1 text-sm text-slate-400">commerce tools</p>
+                <p className="text-3xl font-bold">Save</p>
+                <p className="mt-1 text-sm text-slate-400">wishlist</p>
               </div>
 
               <div>
-                <p className="text-3xl font-bold">Secure</p>
-                <p className="mt-1 text-sm text-slate-400">merchant login</p>
+                <p className="text-3xl font-bold">Grow</p>
+                <p className="mt-1 text-sm text-slate-400">stores</p>
               </div>
             </div>
           </div>
 
           <div className="relative text-sm text-slate-400">
-            Built for modern African and global ecommerce brands.
+            One secure account for customer shopping and merchant management.
           </div>
         </section>
 
@@ -108,7 +148,7 @@ export default function LoginPage() {
             <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
               <div>
                 <p className="text-sm font-semibold uppercase tracking-wide text-sky-600">
-                  Merchant Login
+                  Account login
                 </p>
 
                 <h1 className="mt-3 text-3xl font-bold tracking-tight">
@@ -116,7 +156,8 @@ export default function LoginPage() {
                 </h1>
 
                 <p className="mt-3 text-slate-500">
-                  Sign in to continue managing your StoreForge dashboard.
+                  Sign in to continue shopping, track orders, or manage your
+                  StoreForge dashboard.
                 </p>
               </div>
 
@@ -129,7 +170,7 @@ export default function LoginPage() {
               <div className="mt-8 space-y-4">
                 <div>
                   <label className="mb-2 block text-sm font-medium">
-                    Email Address
+                    Email address
                   </label>
 
                   <input
@@ -181,21 +222,29 @@ export default function LoginPage() {
               <div className="mt-8 border-t border-slate-100 pt-6 text-sm text-slate-500">
                 Do not have an account?{" "}
                 <Link
-                  href="/signup"
+                  href={signupHref}
                   className="font-semibold text-slate-950 hover:underline"
                 >
-                  Create account
+                  Create customer account
                 </Link>
               </div>
             </div>
 
             <p className="mt-6 text-center text-xs text-slate-500">
-              By logging in, you agree to manage your store securely and protect
-              customer information.
+              Keep your login secure. Store owners should protect customer and
+              order information carefully.
             </p>
           </div>
         </section>
       </div>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginContent />
+    </Suspense>
   );
 }

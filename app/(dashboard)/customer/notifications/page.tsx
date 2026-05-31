@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 type Notification = {
@@ -61,16 +62,37 @@ type Preferences = {
   status: string;
 };
 
+type NotificationTenantOption = {
+  id: string;
+  name: string;
+  slug: string;
+  logo_url: string | null;
+  currency: string | null;
+  customer_profile_id: string | null;
+};
+
 export default function CustomerNotificationsPage() {
   const supabase = createClient();
+  const router = useRouter();
 
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [preferences, setPreferences] = useState<Preferences | null>(null);
+
   const [userId, setUserId] = useState<string | null>(null);
   const [tenantId, setTenantId] = useState<string | null>(null);
+  const [customerProfileId, setCustomerProfileId] = useState<string | null>(
+    null
+  );
+
+  const [tenantOptions, setTenantOptions] = useState<
+    NotificationTenantOption[]
+  >([]);
+  const [selectedTenant, setSelectedTenant] =
+    useState<NotificationTenantOption | null>(null);
 
   const [statusFilter, setStatusFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
+  const [storeFilter, setStoreFilter] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
 
   const [loading, setLoading] = useState(true);
@@ -83,9 +105,7 @@ export default function CustomerNotificationsPage() {
     value.replaceAll("_", " ").replaceAll(".", " ");
 
   const getNotificationTone = (notification: Notification) => {
-    if (notification.status === "read") {
-      return "bg-white border-slate-200";
-    }
+    if (notification.status === "read") return "bg-white border-slate-200";
 
     switch (notification.priority) {
       case "urgent":
@@ -180,6 +200,244 @@ export default function CustomerNotificationsPage() {
     return "🔔";
   };
 
+  const resolveTenantForPreferences = async (userIdValue: string) => {
+    const searchParams =
+      typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search)
+        : new URLSearchParams();
+
+    const tenantParam = searchParams.get("tenant");
+    const storeParam = searchParams.get("store");
+
+    const tenantMap = new Map<string, NotificationTenantOption>();
+    let resolvedTenant: NotificationTenantOption | null = null;
+
+    const addTenant = (
+      tenant: any,
+      customerProfileIdValue: string | null = null
+    ) => {
+      if (!tenant?.id) return;
+
+      tenantMap.set(tenant.id, {
+        id: tenant.id,
+        name: tenant.name,
+        slug: tenant.slug,
+        logo_url: tenant.logo_url || null,
+        currency: tenant.currency || null,
+        customer_profile_id: customerProfileIdValue,
+      });
+    };
+
+    if (storeParam) {
+      const { data } = await supabase
+        .from("tenants")
+        .select("id,name,slug,logo_url,currency")
+        .eq("slug", storeParam)
+        .maybeSingle();
+
+      if (data) {
+        resolvedTenant = {
+          ...data,
+          customer_profile_id: null,
+        };
+      }
+    }
+
+    if (!resolvedTenant && tenantParam) {
+      const { data } = await supabase
+        .from("tenants")
+        .select("id,name,slug,logo_url,currency")
+        .eq("id", tenantParam)
+        .maybeSingle();
+
+      if (data) {
+        resolvedTenant = {
+          ...data,
+          customer_profile_id: null,
+        };
+      }
+    }
+
+    if (!resolvedTenant && typeof window !== "undefined") {
+      const lastStoreSlug = window.localStorage.getItem(
+        "storeforge:last_notification_store"
+      );
+
+      if (lastStoreSlug) {
+        const { data } = await supabase
+          .from("tenants")
+          .select("id,name,slug,logo_url,currency")
+          .eq("slug", lastStoreSlug)
+          .maybeSingle();
+
+        if (data) {
+          resolvedTenant = {
+            ...data,
+            customer_profile_id: null,
+          };
+        }
+      }
+    }
+
+    const { data: profileTenants } = await supabase
+      .from("customer_profiles")
+      .select(`
+        id,
+        tenant:tenants (
+          id,
+          name,
+          slug,
+          logo_url,
+          currency
+        )
+      `)
+      .eq("user_id", userIdValue)
+      .order("created_at", { ascending: false })
+      .limit(20);
+
+    (profileTenants || []).forEach((row: any) => {
+      const tenant = Array.isArray(row.tenant) ? row.tenant[0] : row.tenant;
+      addTenant(tenant, row.id);
+    });
+
+    const { data: notificationTenants } = await supabase
+      .from("customer_notification_summary")
+      .select("tenant_id, tenant_name, tenant_slug")
+      .eq("user_id", userIdValue)
+      .neq("status", "archived")
+      .limit(100);
+
+    (notificationTenants || []).forEach((row: any) => {
+      if (!row.tenant_id) return;
+
+      tenantMap.set(row.tenant_id, {
+        id: row.tenant_id,
+        name: row.tenant_name || "Store",
+        slug: row.tenant_slug || row.tenant_id,
+        logo_url: null,
+        currency: null,
+        customer_profile_id: null,
+      });
+    });
+
+    const { data: orderTenants } = await supabase
+      .from("orders")
+      .select(`
+        tenant:tenants (
+          id,
+          name,
+          slug,
+          logo_url,
+          currency
+        )
+      `)
+      .eq("customer_id", userIdValue)
+      .order("created_at", { ascending: false })
+      .limit(10);
+
+    (orderTenants || []).forEach((row: any) => {
+      const tenant = Array.isArray(row.tenant) ? row.tenant[0] : row.tenant;
+      addTenant(tenant);
+    });
+
+    const { data: wishlistTenants } = await supabase
+      .from("wishlists")
+      .select(`
+        product:products (
+          tenant:tenants (
+            id,
+            name,
+            slug,
+            logo_url,
+            currency
+          )
+        )
+      `)
+      .eq("customer_id", userIdValue)
+      .order("created_at", { ascending: false })
+      .limit(10);
+
+    (wishlistTenants || []).forEach((row: any) => {
+      const product = Array.isArray(row.product) ? row.product[0] : row.product;
+      const tenant = Array.isArray(product?.tenant)
+        ? product.tenant[0]
+        : product?.tenant;
+
+      addTenant(tenant);
+    });
+
+    if (resolvedTenant?.id) {
+      tenantMap.set(resolvedTenant.id, resolvedTenant);
+    }
+
+    const options = Array.from(tenantMap.values());
+    setTenantOptions(options);
+
+    if (!resolvedTenant && options.length > 0) {
+      resolvedTenant = options[0];
+    }
+
+    if (resolvedTenant && typeof window !== "undefined") {
+      window.localStorage.setItem(
+        "storeforge:last_notification_store",
+        resolvedTenant.slug
+      );
+    }
+
+    return resolvedTenant;
+  };
+
+  const fetchPreferencesForTenant = async ({
+    tenant,
+    userIdValue,
+  }: {
+    tenant: NotificationTenantOption;
+    userIdValue: string;
+  }) => {
+    const { data: ensuredProfileId, error: profileError } = await supabase.rpc(
+      "ensure_customer_profile",
+      {
+        p_tenant_id: tenant.id,
+        p_user_id: userIdValue,
+        p_full_name: null,
+        p_email: null,
+        p_phone: null,
+      }
+    );
+
+    if (profileError || !ensuredProfileId) {
+      setErrorMessage(profileError?.message || "Customer profile not found.");
+      return;
+    }
+
+    setCustomerProfileId(ensuredProfileId);
+
+    await supabase.rpc("ensure_customer_notification_preferences", {
+      p_tenant_id: tenant.id,
+      p_customer_profile_id: ensuredProfileId,
+      p_user_id: userIdValue,
+    });
+
+    const { data: preferencesData, error: preferencesError } = await supabase
+      .from("customer_notification_preferences")
+      .select("*")
+      .eq("tenant_id", tenant.id)
+      .eq("customer_profile_id", ensuredProfileId)
+      .maybeSingle();
+
+    if (preferencesError) {
+      setErrorMessage(preferencesError.message);
+      return;
+    }
+
+    setPreferences(preferencesData || null);
+    setTenantId(tenant.id);
+    setSelectedTenant({
+      ...tenant,
+      customer_profile_id: ensuredProfileId,
+    });
+  };
+
   const fetchNotifications = async () => {
     try {
       setLoading(true);
@@ -191,46 +449,16 @@ export default function CustomerNotificationsPage() {
       } = await supabase.auth.getUser();
 
       if (!user) {
-        setErrorMessage("You must be logged in.");
+        const currentPath =
+          typeof window !== "undefined"
+            ? `${window.location.pathname}${window.location.search}`
+            : "/customer/notifications";
+
+        router.push(`/login?redirect=${encodeURIComponent(currentPath)}`);
         return;
       }
 
       setUserId(user.id);
-
-      const { data: profileData } = await supabase
-        .from("customer_profiles")
-        .select("id, tenant_id, user_id")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (!profileData) {
-        setErrorMessage("Customer profile not found.");
-        return;
-      }
-
-      setTenantId(profileData.tenant_id);
-
-      await supabase.rpc("ensure_customer_notification_preferences", {
-        p_tenant_id: profileData.tenant_id,
-        p_customer_profile_id: profileData.id,
-        p_user_id: user.id,
-      });
-
-      const { data: preferencesData, error: preferencesError } = await supabase
-        .from("customer_notification_preferences")
-        .select("*")
-        .eq("tenant_id", profileData.tenant_id)
-        .eq("customer_profile_id", profileData.id)
-        .maybeSingle();
-
-      if (preferencesError) {
-        setErrorMessage(preferencesError.message);
-        return;
-      }
-
-      setPreferences(preferencesData || null);
 
       const { data: notificationsData, error: notificationsError } =
         await supabase
@@ -247,6 +475,15 @@ export default function CustomerNotificationsPage() {
       }
 
       setNotifications(notificationsData || []);
+
+      const resolvedTenant = await resolveTenantForPreferences(user.id);
+
+      if (resolvedTenant) {
+        await fetchPreferencesForTenant({
+          tenant: resolvedTenant,
+          userIdValue: user.id,
+        });
+      }
     } catch (error) {
       console.error(error);
       setErrorMessage("Failed to load notifications.");
@@ -267,6 +504,9 @@ export default function CustomerNotificationsPage() {
 
       const matchesType = !typeFilter || notification.type === typeFilter;
 
+      const matchesStore =
+        !storeFilter || notification.tenant_id === storeFilter;
+
       const matchesSearch =
         !searchTerm ||
         [
@@ -280,9 +520,9 @@ export default function CustomerNotificationsPage() {
           .toLowerCase()
           .includes(searchTerm.toLowerCase());
 
-      return matchesStatus && matchesType && matchesSearch;
+      return matchesStatus && matchesType && matchesStore && matchesSearch;
     });
-  }, [notifications, statusFilter, typeFilter, searchTerm]);
+  }, [notifications, statusFilter, typeFilter, storeFilter, searchTerm]);
 
   const stats = useMemo(() => {
     return {
@@ -297,6 +537,29 @@ export default function CustomerNotificationsPage() {
 
   const notificationTypes = useMemo(() => {
     return Array.from(new Set(notifications.map((item) => item.type))).sort();
+  }, [notifications]);
+
+  const notificationStores = useMemo(() => {
+    const storeMap = new Map<
+      string,
+      {
+        id: string;
+        name: string;
+        slug: string;
+      }
+    >();
+
+    notifications.forEach((item) => {
+      if (!item.tenant_id) return;
+
+      storeMap.set(item.tenant_id, {
+        id: item.tenant_id,
+        name: item.tenant_name || "Store",
+        slug: item.tenant_slug || item.tenant_id,
+      });
+    });
+
+    return Array.from(storeMap.values());
   }, [notifications]);
 
   const recentUnread = notifications
@@ -352,7 +615,7 @@ export default function CustomerNotificationsPage() {
         "mark_all_customer_notifications_read",
         {
           p_user_id: userId,
-          p_tenant_id: tenantId,
+          p_tenant_id: storeFilter || null,
         }
       );
 
@@ -362,15 +625,19 @@ export default function CustomerNotificationsPage() {
       }
 
       setNotifications((current) =>
-        current.map((item) =>
-          item.status === "unread"
+        current.map((item) => {
+          const shouldUpdate =
+            item.status === "unread" &&
+            (!storeFilter || item.tenant_id === storeFilter);
+
+          return shouldUpdate
             ? {
                 ...item,
                 status: "read",
                 read_at: new Date().toISOString(),
               }
-            : item
-        )
+            : item;
+        })
       );
 
       setSuccessMessage(`${Number(data || 0)} notification(s) marked as read.`);
@@ -429,7 +696,7 @@ export default function CustomerNotificationsPage() {
   };
 
   const handleSavePreferences = async () => {
-    if (!preferences || !userId) return;
+    if (!preferences || !userId || !tenantId) return;
 
     try {
       setSavingPreferences(true);
@@ -460,6 +727,7 @@ export default function CustomerNotificationsPage() {
           updated_at: new Date().toISOString(),
         })
         .eq("id", preferences.id)
+        .eq("tenant_id", tenantId)
         .eq("user_id", userId);
 
       if (error) {
@@ -477,10 +745,28 @@ export default function CustomerNotificationsPage() {
     }
   };
 
+  const handlePreferenceStoreChange = (slug: string) => {
+    const tenant = tenantOptions.find((item) => item.slug === slug);
+
+    if (!tenant || !userId) return;
+
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("storeforge:last_notification_store", slug);
+    }
+
+    router.push(`/customer/notifications?store=${slug}`);
+
+    fetchPreferencesForTenant({
+      tenant,
+      userIdValue: userId,
+    });
+  };
+
   const resetFilters = () => {
     setSearchTerm("");
     setStatusFilter("");
     setTypeFilter("");
+    setStoreFilter("");
   };
 
   if (loading) {
@@ -514,7 +800,11 @@ export default function CustomerNotificationsPage() {
             </a>
 
             <a
-              href="/customer/loyalty"
+              href={
+                selectedTenant?.slug
+                  ? `/customer/loyalty?store=${selectedTenant.slug}`
+                  : "/customer/loyalty"
+              }
               className="text-sm text-slate-500 hover:text-slate-950"
             >
               My Rewards
@@ -528,7 +818,7 @@ export default function CustomerNotificationsPage() {
             </a>
 
             <a
-              href="/customer/notification-settings"
+              href="#preferences"
               className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium hover:bg-slate-50"
             >
               Settings
@@ -554,7 +844,7 @@ export default function CustomerNotificationsPage() {
               <p className="mt-5 max-w-3xl text-lg leading-8 text-slate-300">
                 Track every important customer update in one polished feed —
                 from delivery progress and refund updates to loyalty points,
-                rewards, coupons, and back-in-stock alerts.
+                rewards, coupons, and back-in-stock alerts across your stores.
               </p>
 
               <div className="mt-8 flex flex-col gap-4 sm:flex-row">
@@ -567,7 +857,11 @@ export default function CustomerNotificationsPage() {
                 </button>
 
                 <a
-                  href="/customer/loyalty"
+                  href={
+                    selectedTenant?.slug
+                      ? `/customer/loyalty?store=${selectedTenant.slug}`
+                      : "/customer/loyalty"
+                  }
                   className="rounded-2xl border border-white/15 px-6 py-4 text-center font-semibold text-white hover:bg-white/10"
                 >
                   View rewards
@@ -655,6 +949,42 @@ export default function CustomerNotificationsPage() {
           <StatCard label="Urgent" value={stats.urgent} helper="High priority" />
         </section>
 
+        {tenantOptions.length > 1 && (
+          <section
+            id="preferences-store"
+            className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm"
+          >
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-wide text-blue-600">
+                  Preference store
+                </p>
+                <h2 className="mt-1 text-xl font-bold text-slate-950">
+                  {selectedTenant?.name || "Select a store"}
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Notification preferences are saved separately for each
+                  merchant.
+                </p>
+              </div>
+
+              <select
+                value={selectedTenant?.slug || ""}
+                onChange={(event) =>
+                  handlePreferenceStoreChange(event.target.value)
+                }
+                className="field-input md:max-w-xs"
+              >
+                {tenantOptions.map((tenant) => (
+                  <option key={tenant.id} value={tenant.slug}>
+                    {tenant.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </section>
+        )}
+
         <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="mb-5 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
@@ -678,7 +1008,7 @@ export default function CustomerNotificationsPage() {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
             <input
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -707,6 +1037,20 @@ export default function CustomerNotificationsPage() {
               {notificationTypes.map((type) => (
                 <option key={type} value={type}>
                   {formatType(type)}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={storeFilter}
+              onChange={(e) => setStoreFilter(e.target.value)}
+              className="field-input"
+            >
+              <option value="">All stores</option>
+
+              {notificationStores.map((store) => (
+                <option key={store.id} value={store.id}>
+                  {store.name}
                 </option>
               ))}
             </select>
@@ -786,7 +1130,9 @@ export default function CustomerNotificationsPage() {
                           )}
 
                           {notification.order_id && (
-                            <span>Order #{notification.order_id.slice(0, 8)}</span>
+                            <span>
+                              Order #{notification.order_id.slice(0, 8)}
+                            </span>
                           )}
                         </div>
                       </div>
@@ -845,7 +1191,10 @@ export default function CustomerNotificationsPage() {
             )}
           </section>
 
-          <aside className="h-fit space-y-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm lg:sticky lg:top-28">
+          <aside
+            id="preferences"
+            className="h-fit space-y-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm lg:sticky lg:top-28"
+          >
             <div>
               <p className="text-sm font-semibold uppercase tracking-wide text-blue-600">
                 Preferences
@@ -856,12 +1205,15 @@ export default function CustomerNotificationsPage() {
               </h2>
 
               <p className="mt-1 text-sm leading-6 text-slate-500">
-                Choose which updates and channels you want to receive.
+                Choose which updates and channels you want to receive
+                {selectedTenant?.name ? ` from ${selectedTenant.name}` : ""}.
               </p>
             </div>
 
             {!preferences ? (
-              <p className="text-slate-500">Preferences unavailable.</p>
+              <div className="rounded-2xl bg-slate-50 p-5 text-sm text-slate-500">
+                Select a store to manage notification preferences.
+              </div>
             ) : (
               <>
                 <div className="space-y-3">

@@ -113,6 +113,8 @@ export default function CartPage() {
   const router = useRouter();
 
   const slug = params.slug as string;
+  const cartRedirect = `/store/${slug}/cart`;
+  const loginRedirectUrl = `/login?redirect=${encodeURIComponent(cartRedirect)}`;
 
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [storefrontSettings, setStorefrontSettings] =
@@ -151,7 +153,7 @@ export default function CartPage() {
       } = await supabase.auth.getUser();
 
       if (!user) {
-        router.push("/login");
+        router.push(loginRedirectUrl);
         return;
       }
 
@@ -542,11 +544,10 @@ export default function CartPage() {
                           </p>
 
                           <p
-                            className={`mt-1 text-xs ${
-                              isOutOfStock
+                            className={`mt-1 text-xs ${isOutOfStock
                                 ? "text-red-600"
                                 : "text-slate-400"
-                            }`}
+                              }`}
                           >
                             {isOutOfStock
                               ? "Out of stock"

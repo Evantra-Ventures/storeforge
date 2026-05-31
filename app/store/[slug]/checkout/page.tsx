@@ -182,9 +182,14 @@ export default function StoreCheckoutPage() {
 
   const slug = params.slug as string;
 
+  const checkoutRedirect = `/store/${slug}/checkout`;
+  const loginRedirectUrl = `/login?redirect=${encodeURIComponent(
+    checkoutRedirect
+  )}`;
+
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [storefrontSettings, setStorefrontSettings] =
-  useState<StorefrontSettings>(defaultStorefrontSettings);
+    useState<StorefrontSettings>(defaultStorefrontSettings);
   const [cart, setCart] = useState<Cart | null>(null);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [customerProfile, setCustomerProfile] =
@@ -266,25 +271,25 @@ export default function StoreCheckoutPage() {
 
   const maxRedeemableBySettings =
     loyaltySettings?.maximum_points_per_order !== null &&
-    loyaltySettings?.maximum_points_per_order !== undefined
+      loyaltySettings?.maximum_points_per_order !== undefined
       ? Math.min(
-          maxRedeemableByBalance,
-          Number(loyaltySettings.maximum_points_per_order)
-        )
+        maxRedeemableByBalance,
+        Number(loyaltySettings.maximum_points_per_order)
+      )
       : maxRedeemableByBalance;
 
   const selectedRedeemPoints = useLoyaltyPoints
     ? Math.min(
-        Number(redeemPoints || 0),
-        maxRedeemableBySettings,
-        Math.max(
-          0,
-          Math.floor(
-            (subtotal + shippingFee - 0.01) /
-              Math.max(Number(loyaltySettings?.currency_per_point || 0), 0.01)
-          )
+      Number(redeemPoints || 0),
+      maxRedeemableBySettings,
+      Math.max(
+        0,
+        Math.floor(
+          (subtotal + shippingFee - 0.01) /
+          Math.max(Number(loyaltySettings?.currency_per_point || 0), 0.01)
         )
       )
+    )
     : 0;
 
   const loyaltyDiscount =
@@ -316,7 +321,7 @@ export default function StoreCheckoutPage() {
       } = await supabase.auth.getUser();
 
       if (!user) {
-        router.push("/login");
+        router.push(loginRedirectUrl);
         return;
       }
 
@@ -334,20 +339,20 @@ export default function StoreCheckoutPage() {
       setTenant(tenantData);
 
       await supabase.rpc("ensure_storefront_settings", {
-  p_tenant_id: tenantData.id,
-});
+        p_tenant_id: tenantData.id,
+      });
 
-const { data: storefrontSettingsData } = await supabase
-  .from("storefront_settings")
-  .select("*")
-  .eq("tenant_id", tenantData.id)
-  .eq("status", "active")
-  .maybeSingle();
+      const { data: storefrontSettingsData } = await supabase
+        .from("storefront_settings")
+        .select("*")
+        .eq("tenant_id", tenantData.id)
+        .eq("status", "active")
+        .maybeSingle();
 
-setStorefrontSettings({
-  ...defaultStorefrontSettings,
-  ...(storefrontSettingsData || {}),
-});
+      setStorefrontSettings({
+        ...defaultStorefrontSettings,
+        ...(storefrontSettingsData || {}),
+      });
 
       const { data: cartData, error: cartError } = await supabase
         .from("carts")
@@ -695,7 +700,7 @@ setStorefrontSettings({
       } = await supabase.auth.getUser();
 
       if (!user) {
-        router.push("/login");
+        router.push(loginRedirectUrl);
         return;
       }
 
@@ -1357,16 +1362,14 @@ function StepPill({
 }) {
   return (
     <div
-      className={`flex items-center gap-3 rounded-2xl border p-4 ${
-        active
+      className={`flex items-center gap-3 rounded-2xl border p-4 ${active
           ? "border-blue-200 bg-blue-50 text-blue-700"
           : "border-slate-200 bg-slate-50 text-slate-500"
-      }`}
+        }`}
     >
       <span
-        className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold ${
-          active ? "bg-blue-600 text-white" : "bg-slate-200 text-slate-500"
-        }`}
+        className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold ${active ? "bg-blue-600 text-white" : "bg-slate-200 text-slate-500"
+          }`}
       >
         {number}
       </span>
@@ -1407,17 +1410,15 @@ function MethodCard({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-2xl border p-5 text-left transition ${
-        selected
+      className={`rounded-2xl border p-5 text-left transition ${selected
           ? "border-blue-500 bg-blue-50 ring-2 ring-blue-100"
           : "border-slate-200 bg-white hover:bg-slate-50"
-      }`}
+        }`}
     >
       <div className="flex items-start gap-3">
         <span
-          className={`mt-1 flex h-5 w-5 items-center justify-center rounded-full border ${
-            selected ? "border-blue-600 bg-blue-600" : "border-slate-300"
-          }`}
+          className={`mt-1 flex h-5 w-5 items-center justify-center rounded-full border ${selected ? "border-blue-600 bg-blue-600" : "border-slate-300"
+            }`}
         >
           {selected && <span className="h-2 w-2 rounded-full bg-white" />}
         </span>
@@ -1671,9 +1672,8 @@ function SummaryRow({
 }) {
   return (
     <div
-      className={`flex justify-between ${
-        success ? "text-green-700" : "text-slate-600"
-      }`}
+      className={`flex justify-between ${success ? "text-green-700" : "text-slate-600"
+        }`}
     >
       <span>{label}</span>
       <span className="font-medium">{value}</span>

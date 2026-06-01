@@ -98,7 +98,7 @@ function LoginContent() {
           <div className="relative">
             <Link href="/" className="inline-flex items-center">
               <Image
-                src="/images/logo/dark-logo.svg"
+                src="/images/logo/dark-logo.png"
                 alt="StoreForge"
                 width={180}
                 height={48}

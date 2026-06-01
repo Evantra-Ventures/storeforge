@@ -2,33 +2,37 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Suspense, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
-function getSafeRedirect(value: string | null) {
-  if (!value) return "";
-  if (!value.startsWith("/")) return "";
-  if (value.startsWith("//")) return "";
-  return value;
-}
-
-function LoginContent() {
+export default function StartSellingPage() {
   const supabase = createClient();
-  const searchParams = useSearchParams();
 
-  const redirectTo = getSafeRedirect(searchParams.get("redirect"));
-
+  const [fullName, setFullName] = useState("");
+  const [storeName, setStoreName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
 
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
 
-  const handleLogin = async () => {
+  const handleMerchantSignup = async () => {
     try {
       setLoading(true);
       setErrorMessage("");
+      setSuccessMessage("");
+
+      if (!fullName.trim()) {
+        setErrorMessage("Full name is required.");
+        return;
+      }
+
+      if (!storeName.trim()) {
+        setErrorMessage("Store name is required.");
+        return;
+      }
 
       if (!email.trim()) {
         setErrorMessage("Email is required.");
@@ -40,9 +44,30 @@ function LoginContent() {
         return;
       }
 
-      const { data, error } = await supabase.auth.signInWithPassword({
+      if (password.length < 6) {
+        setErrorMessage("Password must be at least 6 characters.");
+        return;
+      }
+
+      if (password !== confirmPassword) {
+        setErrorMessage("Passwords do not match.");
+        return;
+      }
+
+      const { data, error } = await supabase.auth.signUp({
         email: email.trim(),
         password,
+        options: {
+          data: {
+            full_name: fullName.trim(),
+            store_name: storeName.trim(),
+            role: "store_owner",
+          },
+          emailRedirectTo:
+            typeof window !== "undefined"
+              ? `${window.location.origin}/onboarding`
+              : undefined,
+        },
       });
 
       if (error) {
@@ -50,43 +75,41 @@ function LoginContent() {
         return;
       }
 
-      const userId = data.user?.id;
-
-      if (!userId) {
-        setErrorMessage("Login failed. Please try again.");
+      if (!data.user) {
+        setErrorMessage("Merchant account creation failed.");
         return;
       }
 
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("role, tenant_id")
-        .eq("id", userId)
-        .maybeSingle();
+      const { error: profileError } = await supabase.from("profiles").upsert(
+        {
+          id: data.user.id,
+          full_name: fullName.trim(),
+          role: "store_owner",
+        },
+        {
+          onConflict: "id",
+        }
+      );
 
-      const role = profile?.role || "customer";
+      if (profileError) {
+        console.warn("Profile upsert warning:", profileError.message);
+      }
 
-      if (redirectTo) {
-        window.location.href = redirectTo;
+      if (!data.session) {
+        setSuccessMessage(
+          "Merchant account created. Please check your email to confirm your account, then sign in."
+        );
         return;
       }
 
-      if (["owner", "store_owner", "admin", "super_admin"].includes(role)) {
-        window.location.href = profile?.tenant_id ? "/dashboard" : "/onboarding";
-        return;
-      }
-
-      window.location.href = "/customer/profile";
+      window.location.href = "/onboarding";
     } catch (error) {
       console.error(error);
-      setErrorMessage("Login failed. Please try again.");
+      setErrorMessage("Something went wrong. Please try again.");
     } finally {
       setLoading(false);
     }
   };
-
-  const signupHref = redirectTo
-    ? `/signup?redirect=${encodeURIComponent(redirectTo)}`
-    : "/signup";
 
   return (
     <main className="min-h-screen bg-slate-950 text-white">
@@ -117,39 +140,39 @@ function LoginContent() {
                 height={20}
                 className="h-5 w-5"
               />
-              <span>Welcome back</span>
+              <span>Merchant signup</span>
             </div>
 
             <h1 className="text-5xl font-bold leading-tight tracking-tight">
-              Sign in to shop, track orders, or manage your store.
+              Start selling online with your own branded storefront.
             </h1>
 
             <p className="mt-6 text-lg leading-8 text-slate-300">
-              Customers can manage orders, wishlist, notifications, and rewards.
-              Merchants can access products, orders, marketing, analytics, and
-              storefront settings.
+              Create your store, upload products, customize your storefront,
+              manage orders, send customer updates, and grow your ecommerce
+              business from one dashboard.
             </p>
 
             <div className="mt-10 grid grid-cols-3 gap-4 border-t border-white/10 pt-8">
               <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                <p className="text-3xl font-bold">Track</p>
-                <p className="mt-1 text-sm text-slate-400">orders</p>
+                <p className="text-3xl font-bold">Launch</p>
+                <p className="mt-1 text-sm text-slate-400">your shop</p>
               </div>
 
               <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                <p className="text-3xl font-bold">Save</p>
-                <p className="mt-1 text-sm text-slate-400">wishlist</p>
+                <p className="text-3xl font-bold">Sell</p>
+                <p className="mt-1 text-sm text-slate-400">products</p>
               </div>
 
               <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                 <p className="text-3xl font-bold">Grow</p>
-                <p className="mt-1 text-sm text-slate-400">stores</p>
+                <p className="mt-1 text-sm text-slate-400">customers</p>
               </div>
             </div>
           </div>
 
           <div className="relative text-sm text-slate-400">
-            One secure account for customer shopping and merchant management.
+            Shopping as a customer? Create a customer account instead.
           </div>
         </section>
 
@@ -181,16 +204,16 @@ function LoginContent() {
                 </div>
 
                 <p className="text-sm font-semibold uppercase tracking-wide text-sky-600">
-                  Account login
+                  Start selling
                 </p>
 
                 <h1 className="mt-3 text-3xl font-bold tracking-tight">
-                  Welcome back
+                  Create your merchant account
                 </h1>
 
                 <p className="mt-3 text-slate-500">
-                  Sign in to continue shopping, track orders, or manage your
-                  StoreForge dashboard.
+                  Sign up to create your shop, customize your storefront, and
+                  start managing products and orders.
                 </p>
               </div>
 
@@ -200,7 +223,39 @@ function LoginContent() {
                 </div>
               )}
 
+              {successMessage && (
+                <div className="mt-6 rounded-2xl bg-green-50 p-4 text-sm text-green-700">
+                  {successMessage}
+                </div>
+              )}
+
               <div className="mt-8 space-y-4">
+                <div>
+                  <label className="mb-2 block text-sm font-medium">
+                    Full name
+                  </label>
+
+                  <input
+                    className="w-full rounded-2xl border border-slate-200 px-4 py-4 outline-none transition focus:border-slate-950"
+                    placeholder="Your full name"
+                    value={fullName}
+                    onChange={(event) => setFullName(event.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium">
+                    Store name
+                  </label>
+
+                  <input
+                    className="w-full rounded-2xl border border-slate-200 px-4 py-4 outline-none transition focus:border-slate-950"
+                    placeholder="Example: Tech World"
+                    value={storeName}
+                    onChange={(event) => setStoreName(event.target.value)}
+                  />
+                </div>
+
                 <div>
                   <label className="mb-2 block text-sm font-medium">
                     Email address
@@ -216,78 +271,75 @@ function LoginContent() {
                 </div>
 
                 <div>
-                  <div className="mb-2 flex items-center justify-between gap-4">
-                    <label className="block text-sm font-medium">
-                      Password
-                    </label>
-
-                    <a
-                      href="#"
-                      className="text-sm font-medium text-sky-600 hover:underline"
-                    >
-                      Forgot password?
-                    </a>
-                  </div>
+                  <label className="mb-2 block text-sm font-medium">
+                    Password
+                  </label>
 
                   <input
                     className="w-full rounded-2xl border border-slate-200 px-4 py-4 outline-none transition focus:border-slate-950"
                     type="password"
-                    placeholder="Enter your password"
+                    placeholder="Create a password"
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium">
+                    Confirm password
+                  </label>
+
+                  <input
+                    className="w-full rounded-2xl border border-slate-200 px-4 py-4 outline-none transition focus:border-slate-950"
+                    type="password"
+                    placeholder="Repeat your password"
+                    value={confirmPassword}
+                    onChange={(event) => setConfirmPassword(event.target.value)}
                     onKeyDown={(event) => {
                       if (event.key === "Enter") {
-                        handleLogin();
+                        handleMerchantSignup();
                       }
                     }}
                   />
                 </div>
 
                 <button
-                  onClick={handleLogin}
+                  onClick={handleMerchantSignup}
                   disabled={loading}
                   className="w-full rounded-2xl bg-slate-950 px-6 py-4 font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {loading ? "Logging in..." : "Log in"}
+                  {loading ? "Creating merchant account..." : "Start selling"}
                 </button>
               </div>
 
               <div className="mt-8 border-t border-slate-100 pt-6 text-sm text-slate-500">
-                Do not have a customer account?{" "}
+                Already have an account?{" "}
                 <Link
-                  href={signupHref}
+                  href="/login"
+                  className="font-semibold text-slate-950 hover:underline"
+                >
+                  Log in
+                </Link>
+              </div>
+
+              <div className="mt-4 text-sm text-slate-500">
+                Want to shop instead?{" "}
+                <Link
+                  href="/signup"
                   className="font-semibold text-slate-950 hover:underline"
                 >
                   Create customer account
                 </Link>
               </div>
-
-              <div className="mt-4 text-sm text-slate-500">
-                Want to sell online?{" "}
-                <Link
-                  href="/start-selling"
-                  className="font-semibold text-slate-950 hover:underline"
-                >
-                  Start selling
-                </Link>
-              </div>
             </div>
 
             <p className="mt-6 text-center text-xs text-slate-500">
-              Keep your login secure. Store owners should protect customer and
-              order information carefully.
+              Merchant accounts are used for storefront setup, product
+              management, orders, analytics, marketing, and payouts.
             </p>
           </div>
         </section>
       </div>
     </main>
-  );
-}
-
-export default function LoginPage() {
-  return (
-    <Suspense>
-      <LoginContent />
-    </Suspense>
   );
 }

@@ -163,6 +163,9 @@ export default async function DashboardOverviewPage() {
     pendingOrdersResult,
     deliveryOrdersResult,
     failedEmailsResult,
+    categoriesCountResult,
+    activeProductsCountResult,
+    productsWithImagesCountResult,
   ] = await Promise.all([
     supabase
       .from("orders")
@@ -193,7 +196,8 @@ export default async function DashboardOverviewPage() {
 
     supabase
       .from("orders")
-      .select(`
+      .select(
+        `
         id,
         customer_name,
         customer_email,
@@ -202,7 +206,8 @@ export default async function DashboardOverviewPage() {
         payment_status,
         delivery_status,
         created_at
-      `)
+      `,
+      )
       .eq("tenant_id", tenant.id)
       .order("created_at", { ascending: false })
       .limit(6),
@@ -223,7 +228,8 @@ export default async function DashboardOverviewPage() {
 
     supabase
       .from("product_variants")
-      .select(`
+      .select(
+        `
         id,
         name,
         option_name,
@@ -235,7 +241,8 @@ export default async function DashboardOverviewPage() {
           id,
           name
         )
-      `)
+      `,
+      )
       .eq("tenant_id", tenant.id)
       .eq("status", "active")
       .order("inventory", { ascending: true })
@@ -243,7 +250,9 @@ export default async function DashboardOverviewPage() {
 
     supabase
       .from("notification_email_queue")
-      .select("id,to_email,subject,type,status,attempts,max_attempts,created_at")
+      .select(
+        "id,to_email,subject,type,status,attempts,max_attempts,created_at",
+      )
       .eq("tenant_id", tenant.id)
       .order("created_at", { ascending: false })
       .limit(5),
@@ -265,6 +274,24 @@ export default async function DashboardOverviewPage() {
       .select("id", { count: "exact", head: true })
       .eq("tenant_id", tenant.id)
       .eq("status", "failed"),
+
+    supabase
+      .from("categories")
+      .select("id", { count: "exact", head: true })
+      .eq("tenant_id", tenant.id),
+
+    supabase
+      .from("products")
+      .select("id", { count: "exact", head: true })
+      .eq("tenant_id", tenant.id)
+      .eq("status", "active"),
+
+    supabase
+      .from("products")
+      .select("id", { count: "exact", head: true })
+      .eq("tenant_id", tenant.id)
+      .eq("status", "active")
+      .not("image_url", "is", null),
   ]);
 
   const totalOrders = ordersCountResult.count || 0;
@@ -276,9 +303,99 @@ export default async function DashboardOverviewPage() {
   const activeDeliveries = deliveryOrdersResult.count || 0;
   const failedEmails = failedEmailsResult.count || 0;
 
+  const totalCategories = categoriesCountResult.count || 0;
+  const activeProducts = activeProductsCountResult.count || 0;
+  const productsWithImages = productsWithImagesCountResult.count || 0;
+
+  const hasStoreIdentity = Boolean(tenant.name && tenant.slug);
+  const hasLogo = Boolean(tenant.logo_url);
+  const hasStorefrontDesign = Boolean(storefrontSettingsData);
+  const hasHeroOrBanner = Boolean(
+    storefrontSettings.hero_image_url || tenant.banner_url,
+  );
+  const hasCategories = totalCategories > 0;
+  const hasActiveProducts = activeProducts > 0;
+  const hasProductImages = productsWithImages > 0;
+  const hasEmailSystem = Boolean(process.env.RESEND_API_KEY);
+  const hasOrders = totalOrders > 0;
+
+  const launchChecklist = [
+    {
+      title: "Store identity",
+      description: "Store name and public slug are ready.",
+      completed: hasStoreIdentity,
+      href: "/settings",
+    },
+    {
+      title: "Store logo",
+      description: "Upload a logo so customers recognize your brand.",
+      completed: hasLogo,
+      href: "/settings/storefront",
+    },
+    {
+      title: "Storefront design",
+      description: "Customize colors, layout, buttons, and storefront content.",
+      completed: hasStorefrontDesign,
+      href: "/settings/storefront",
+    },
+    {
+      title: "Hero or banner image",
+      description: "Add a strong visual banner for your storefront.",
+      completed: hasHeroOrBanner,
+      href: "/settings/storefront",
+    },
+    {
+      title: "Product categories",
+      description: "Create at least one category for easier shopping.",
+      completed: hasCategories,
+      href: "/categories",
+    },
+    {
+      title: "Active products",
+      description: "Publish at least one active product.",
+      completed: hasActiveProducts,
+      href: "/products",
+    },
+    {
+      title: "Product images",
+      description: "Add product images to improve customer trust.",
+      completed: hasProductImages,
+      href: "/products",
+    },
+    {
+      title: "Email notifications",
+      description: "Email system is ready for receipts and customer updates.",
+      completed: hasEmailSystem,
+      href: "/dashboard/marketing/email-queue",
+    },
+    {
+      title: "First order",
+      description: "Receive your first customer order.",
+      completed: hasOrders,
+      href: "/orders",
+    },
+  ];
+
+  const completedLaunchItems = launchChecklist.filter(
+    (item) => item.completed,
+  ).length;
+
+  const launchProgress = Math.round(
+    (completedLaunchItems / launchChecklist.length) * 100,
+  );
+
+  const storeIsLaunchReady =
+    hasStoreIdentity &&
+    hasLogo &&
+    hasStorefrontDesign &&
+    hasHeroOrBanner &&
+    hasCategories &&
+    hasActiveProducts &&
+    hasProductImages;
+
   const totalRevenue = (paidOrdersResult.data || []).reduce(
     (sum: number, order: any) => sum + Number(order.total_amount || 0),
-    0
+    0,
   );
 
   const recentOrders = recentOrdersResult.data || [];
@@ -286,12 +403,13 @@ export default async function DashboardOverviewPage() {
   const lowStockProducts = (productsResult.data || []).filter(
     (product: any) =>
       Number(product.inventory || 0) <=
-      Number(product.low_stock_threshold || 5)
+      Number(product.low_stock_threshold || 5),
   );
 
   const lowStockVariants = (variantsResult.data || []).filter(
     (variant: any) =>
-      Number(variant.inventory || 0) <= Number(variant.low_stock_threshold || 5)
+      Number(variant.inventory || 0) <=
+      Number(variant.low_stock_threshold || 5),
   );
 
   const lowStockItems = [
@@ -384,7 +502,7 @@ export default async function DashboardOverviewPage() {
               <a
                 href={`/store/${tenant.slug}`}
                 className={`${getButtonClass(
-                  storefrontSettings.button_style
+                  storefrontSettings.button_style,
                 )} bg-white px-6 py-4 text-center font-semibold`}
                 style={{
                   color: storefrontSettings.primary_color,
@@ -396,7 +514,7 @@ export default async function DashboardOverviewPage() {
               <a
                 href="/settings/storefront"
                 className={`${getButtonClass(
-                  storefrontSettings.button_style
+                  storefrontSettings.button_style,
                 )} border border-white/15 px-6 py-4 text-center font-semibold text-white hover:bg-white/10`}
               >
                 Customize storefront
@@ -405,7 +523,7 @@ export default async function DashboardOverviewPage() {
               <a
                 href="/orders"
                 className={`${getButtonClass(
-                  storefrontSettings.button_style
+                  storefrontSettings.button_style,
                 )} border border-white/15 px-6 py-4 text-center font-semibold text-white hover:bg-white/10`}
               >
                 View orders
@@ -443,6 +561,16 @@ export default async function DashboardOverviewPage() {
         </div>
       </section>
 
+      <LaunchChecklistCard
+        checklist={launchChecklist}
+        progress={launchProgress}
+        completedCount={completedLaunchItems}
+        totalCount={launchChecklist.length}
+        storeIsLaunchReady={storeIsLaunchReady}
+        tenantSlug={tenant.slug}
+        storefrontSettings={storefrontSettings}
+      />
+
       <section className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="Revenue"
@@ -463,11 +591,7 @@ export default async function DashboardOverviewPage() {
       </section>
 
       <section className="grid grid-cols-1 gap-5 md:grid-cols-4">
-        <MiniStat
-          label="Pending orders"
-          value={pendingOrders}
-          tone="yellow"
-        />
+        <MiniStat label="Pending orders" value={pendingOrders} tone="yellow" />
         <MiniStat
           label="Active deliveries"
           value={activeDeliveries}
@@ -502,7 +626,7 @@ export default async function DashboardOverviewPage() {
             <a
               href="/orders"
               className={`${getButtonClass(
-                storefrontSettings.button_style
+                storefrontSettings.button_style,
               )} border border-slate-200 px-4 py-2 text-sm font-medium hover:bg-slate-50`}
             >
               View all orders
@@ -552,7 +676,7 @@ export default async function DashboardOverviewPage() {
 
                     <span
                       className={`w-fit rounded-full px-3 py-1 text-xs font-semibold capitalize ${statusClass(
-                        order.payment_status
+                        order.payment_status,
                       )}`}
                     >
                       {formatStatus(order.payment_status)}
@@ -560,7 +684,7 @@ export default async function DashboardOverviewPage() {
 
                     <span
                       className={`w-fit rounded-full px-3 py-1 text-xs font-semibold capitalize ${statusClass(
-                        order.delivery_status
+                        order.delivery_status,
                       )}`}
                     >
                       {formatStatus(order.delivery_status)}
@@ -614,7 +738,7 @@ export default async function DashboardOverviewPage() {
           <a
             href="/products"
             className={`${getButtonClass(
-              storefrontSettings.button_style
+              storefrontSettings.button_style,
             )} mt-5 block px-5 py-3 text-center text-sm font-semibold text-white hover:opacity-90`}
             style={{
               backgroundColor: storefrontSettings.primary_color,
@@ -691,7 +815,7 @@ export default async function DashboardOverviewPage() {
             <a
               href="/settings/storefront"
               className={`${getButtonClass(
-                storefrontSettings.button_style
+                storefrontSettings.button_style,
               )} px-5 py-3 text-center text-sm font-semibold text-white hover:opacity-90`}
               style={{
                 backgroundColor: storefrontSettings.primary_color,
@@ -703,7 +827,7 @@ export default async function DashboardOverviewPage() {
             <a
               href={`/store/${tenant.slug}`}
               className={`${getButtonClass(
-                storefrontSettings.button_style
+                storefrontSettings.button_style,
               )} border border-slate-200 px-5 py-3 text-center text-sm font-semibold hover:bg-slate-50`}
             >
               Open storefront
@@ -741,7 +865,7 @@ export default async function DashboardOverviewPage() {
 
                     <span
                       className={`rounded-full px-3 py-1 text-xs font-semibold capitalize ${statusClass(
-                        item.status
+                        item.status,
                       )}`}
                     >
                       {item.status}
@@ -759,7 +883,7 @@ export default async function DashboardOverviewPage() {
           <a
             href="/dashboard/marketing/email-queue"
             className={`${getButtonClass(
-              storefrontSettings.button_style
+              storefrontSettings.button_style,
             )} mt-5 block border border-slate-200 px-5 py-3 text-center text-sm font-semibold hover:bg-slate-50`}
           >
             Open email queue
@@ -891,6 +1015,175 @@ function QuickAction({
     >
       <h3 className="font-bold text-slate-950">{title}</h3>
       <p className="mt-2 text-sm leading-6 text-slate-500">{text}</p>
+    </a>
+  );
+}
+function LaunchChecklistCard({
+  checklist,
+  progress,
+  completedCount,
+  totalCount,
+  storeIsLaunchReady,
+  tenantSlug,
+  storefrontSettings,
+}: {
+  checklist: {
+    title: string;
+    description: string;
+    completed: boolean;
+    href: string;
+  }[];
+  progress: number;
+  completedCount: number;
+  totalCount: number;
+  storeIsLaunchReady: boolean;
+  tenantSlug: string;
+  storefrontSettings: StorefrontSettings;
+}) {
+  const nextItem = checklist.find((item) => !item.completed);
+
+  return (
+    <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="grid grid-cols-1 gap-8 xl:grid-cols-3 xl:items-start">
+        <div>
+          <p
+            className="text-sm font-semibold uppercase tracking-wide"
+            style={{
+              color: storefrontSettings.accent_color,
+            }}
+          >
+            Launch checklist
+          </p>
+
+          <h2 className="mt-2 text-2xl font-bold text-slate-950">
+            {storeIsLaunchReady
+              ? "Your store is ready to share"
+              : "Get your store launch-ready"}
+          </h2>
+
+          <p className="mt-2 text-sm leading-6 text-slate-500">
+            Complete these steps before inviting customers to shop from your
+            storefront.
+          </p>
+
+          <div className="mt-6">
+            <div className="mb-2 flex items-center justify-between text-sm">
+              <span className="font-medium text-slate-700">
+                {completedCount} of {totalCount} completed
+              </span>
+              <span className="font-bold text-slate-950">{progress}%</span>
+            </div>
+
+            <div className="h-3 overflow-hidden rounded-full bg-slate-100">
+              <div
+                className="h-full rounded-full transition-all"
+                style={{
+                  width: `${progress}%`,
+                  backgroundColor: storefrontSettings.accent_color,
+                }}
+              />
+            </div>
+          </div>
+
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+            <a
+              href={`/store/${tenantSlug}`}
+              className={`${getButtonClass(
+                storefrontSettings.button_style,
+              )} px-5 py-3 text-center text-sm font-semibold text-white hover:opacity-90`}
+              style={{
+                backgroundColor: storefrontSettings.primary_color,
+              }}
+            >
+              Preview store
+            </a>
+
+            {nextItem && (
+              <a
+                href={nextItem.href}
+                className={`${getButtonClass(
+                  storefrontSettings.button_style,
+                )} border border-slate-200 px-5 py-3 text-center text-sm font-semibold hover:bg-slate-50`}
+              >
+                Continue setup
+              </a>
+            )}
+          </div>
+        </div>
+
+        <div className="space-y-3 xl:col-span-2">
+          {checklist.map((item) => (
+            <LaunchChecklistItem
+              key={item.title}
+              title={item.title}
+              description={item.description}
+              completed={item.completed}
+              href={item.href}
+            />
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function LaunchChecklistItem({
+  title,
+  description,
+  completed,
+  href,
+}: {
+  title: string;
+  description: string;
+  completed: boolean;
+  href: string;
+}) {
+  return (
+    <a
+      href={href}
+      className={`flex flex-col gap-4 rounded-2xl border p-4 transition hover:-translate-y-1 hover:shadow-md md:flex-row md:items-center md:justify-between ${
+        completed
+          ? "border-green-200 bg-green-50"
+          : "border-slate-200 bg-slate-50"
+      }`}
+    >
+      <div className="flex items-start gap-4">
+        <div
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
+            completed ? "bg-green-600 text-white" : "bg-white text-slate-400"
+          }`}
+        >
+          {completed ? "✓" : "!"}
+        </div>
+
+        <div>
+          <h3
+            className={`font-bold ${
+              completed ? "text-green-900" : "text-slate-950"
+            }`}
+          >
+            {title}
+          </h3>
+
+          <p
+            className={`mt-1 text-sm leading-6 ${
+              completed ? "text-green-700" : "text-slate-500"
+            }`}
+          >
+            {description}
+          </p>
+        </div>
+      </div>
+
+      <span
+        className={`w-fit rounded-full px-3 py-1 text-xs font-semibold ${
+          completed
+            ? "bg-green-100 text-green-700"
+            : "bg-yellow-100 text-yellow-700"
+        }`}
+      >
+        {completed ? "Complete" : "Needs setup"}
+      </span>
     </a>
   );
 }

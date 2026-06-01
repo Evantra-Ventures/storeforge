@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -124,16 +125,31 @@ function SignupContent() {
       <div className="grid min-h-screen grid-cols-1 lg:grid-cols-2">
         <section className="relative hidden overflow-hidden bg-slate-950 px-12 py-12 lg:flex lg:flex-col lg:justify-between">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.22),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(168,85,247,0.22),transparent_35%)]" />
+          <div className="absolute left-1/2 top-24 h-72 w-72 -translate-x-1/2 rounded-full bg-sky-500/10 blur-3xl" />
 
           <div className="relative">
-            <Link href="/" className="text-2xl font-bold tracking-tight">
-              StoreForge
+            <Link href="/" className="inline-flex items-center">
+              <Image
+                src="/images/logo/dark-logo.svg"
+                alt="StoreForge"
+                width={180}
+                height={48}
+                priority
+                className="h-9 w-auto"
+              />
             </Link>
           </div>
 
           <div className="relative max-w-xl">
-            <div className="mb-6 inline-flex rounded-full border border-white/10 bg-white/10 px-4 py-2 text-sm text-slate-200">
-              Customer account
+            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-4 py-2 text-sm text-slate-200">
+              <Image
+                src="/images/logo/icon64x64.png"
+                alt=""
+                width={20}
+                height={20}
+                className="h-5 w-5"
+              />
+              <span>Customer account</span>
             </div>
 
             <h1 className="text-5xl font-bold leading-tight tracking-tight">
@@ -146,17 +162,17 @@ function SignupContent() {
             </p>
 
             <div className="mt-10 grid grid-cols-3 gap-4 border-t border-white/10 pt-8">
-              <div>
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                 <p className="text-3xl font-bold">Fast</p>
                 <p className="mt-1 text-sm text-slate-400">checkout</p>
               </div>
 
-              <div>
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                 <p className="text-3xl font-bold">Track</p>
                 <p className="mt-1 text-sm text-slate-400">orders</p>
               </div>
 
-              <div>
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                 <p className="text-3xl font-bold">Earn</p>
                 <p className="mt-1 text-sm text-slate-400">rewards</p>
               </div>
@@ -164,20 +180,37 @@ function SignupContent() {
           </div>
 
           <div className="relative text-sm text-slate-400">
-            Want to sell on StoreForge? Use merchant onboarding instead.
+            Want to sell on StoreForge? Start a merchant account instead.
           </div>
         </section>
 
         <section className="flex min-h-screen items-center justify-center bg-slate-50 px-6 py-12 text-slate-950">
           <div className="w-full max-w-md">
             <div className="mb-10 lg:hidden">
-              <Link href="/" className="text-2xl font-bold tracking-tight">
-                StoreForge
+              <Link href="/" className="inline-flex items-center">
+                <Image
+                  src="/images/logo/primary-logo.svg"
+                  alt="StoreForge"
+                  width={180}
+                  height={48}
+                  priority
+                  className="h-9 w-auto"
+                />
               </Link>
             </div>
 
             <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
               <div>
+                <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-950">
+                  <Image
+                    src="/images/logo/icon64x64.png"
+                    alt=""
+                    width={34}
+                    height={34}
+                    className="h-9 w-9"
+                  />
+                </div>
+
                 <p className="text-sm font-semibold uppercase tracking-wide text-sky-600">
                   Customer signup
                 </p>
@@ -188,7 +221,7 @@ function SignupContent() {
 
                 <p className="mt-3 text-slate-500">
                   Sign up to buy products, save your wishlist, track orders, and
-                  manage rewards.
+                  manage rewards across StoreForge stores.
                 </p>
               </div>
 
@@ -281,6 +314,16 @@ function SignupContent() {
                   className="font-semibold text-slate-950 hover:underline"
                 >
                   Log in
+                </Link>
+              </div>
+
+              <div className="mt-4 text-sm text-slate-500">
+                Want to sell online?{" "}
+                <Link
+                  href="/start-selling"
+                  className="font-semibold text-slate-950 hover:underline"
+                >
+                  Start selling
                 </Link>
               </div>
             </div>

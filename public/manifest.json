@@ -1,0 +1,21 @@
+{
+  "name": "StoreForge",
+  "short_name": "StoreForge",
+  "description": "Build, launch, and grow modern online stores with StoreForge.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0D1324",
+  "theme_color": "#0D1324",
+  "icons": [
+    {
+      "src": "/icon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/apple-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ]
+}

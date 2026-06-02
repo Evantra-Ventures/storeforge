@@ -1,9 +1,27 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
+function getStoreVisibilityStatus(tenant: any) {
+  if (tenant?.store_status) return tenant.store_status;
+  if (tenant?.status) return tenant.status;
+  if (tenant?.is_published === false) return "draft";
+  return "active";
+}
+
+function isStorePublic(status: string) {
+  return status === "active" || status === "published";
+}
+
 export async function POST(request: Request) {
   try {
     const supabase = createClient();
+
+    if (!process.env.PAYSTACK_SECRET_KEY) {
+      return NextResponse.json(
+        { error: "Payment provider is not configured." },
+        { status: 500 }
+      );
+    }
 
     const { orderId } = await request.json();
 
@@ -33,6 +51,25 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Order not found." }, { status: 404 });
     }
 
+    const { data: tenant, error: tenantError } = await supabase
+      .from("tenants")
+      .select("*")
+      .eq("id", order.tenant_id)
+      .maybeSingle();
+
+    if (tenantError || !tenant) {
+      return NextResponse.json({ error: "Store not found." }, { status: 404 });
+    }
+
+    const storeStatus = getStoreVisibilityStatus(tenant);
+
+    if (!isStorePublic(storeStatus)) {
+      return NextResponse.json(
+        { error: "This store is not accepting payments right now." },
+        { status: 403 }
+      );
+    }
+
     if (order.payment_status === "paid") {
       return NextResponse.json(
         { error: "Order has already been paid." },
@@ -43,6 +80,13 @@ export async function POST(request: Request) {
     if (order.status === "cancelled") {
       return NextResponse.json(
         { error: "Cancelled orders cannot be paid." },
+        { status: 400 }
+      );
+    }
+
+    if (!["pending", "awaiting_payment"].includes(order.status)) {
+      return NextResponse.json(
+        { error: "This order is not eligible for payment." },
         { status: 400 }
       );
     }
@@ -58,20 +102,27 @@ export async function POST(request: Request) {
 
     const amountInSubunit = Math.round(totalAmount * 100);
 
-    const baseUrl =
-      process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
     const reference =
       order.checkout_session_id ||
       `sf_${order.id.replaceAll("-", "")}_${Date.now()}`;
 
-    await supabase
+    const { error: updateReferenceError } = await supabase
       .from("orders")
       .update({
         checkout_session_id: reference,
+        updated_at: new Date().toISOString(),
       })
       .eq("id", order.id)
       .eq("customer_id", user.id);
+
+    if (updateReferenceError) {
+      return NextResponse.json(
+        { error: "Failed to prepare payment session." },
+        { status: 400 }
+      );
+    }
 
     const callbackUrl = `${baseUrl}/payment/callback?reference=${encodeURIComponent(
       reference
@@ -88,12 +139,13 @@ export async function POST(request: Request) {
         body: JSON.stringify({
           email: order.customer_email || user.email,
           amount: amountInSubunit,
-          currency: order.currency || "GHS",
+          currency: order.currency || tenant.currency || "GHS",
           reference,
           callback_url: callbackUrl,
           metadata: {
             order_id: order.id,
             tenant_id: order.tenant_id,
+            store_slug: tenant.slug,
             customer_id: user.id,
             subtotal_amount: order.subtotal_amount,
             discount_amount: order.discount_amount,
@@ -125,6 +177,7 @@ export async function POST(request: Request) {
         .from("orders")
         .update({
           checkout_session_id: paystackReference,
+          updated_at: new Date().toISOString(),
         })
         .eq("id", order.id)
         .eq("customer_id", user.id);

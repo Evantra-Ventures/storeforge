@@ -13,6 +13,9 @@ type Tenant = {
   currency: string | null;
   contact_email: string | null;
   support_phone: string | null;
+  status?: string | null;
+  store_status?: string | null;
+  is_published?: boolean | null;
 };
 
 type Product = {
@@ -20,6 +23,8 @@ type Product = {
   name: string;
   image_url: string | null;
   price: number;
+  inventory?: number | null;
+  status?: string | null;
 };
 
 type Variant = {
@@ -30,6 +35,8 @@ type Variant = {
   price_adjustment: number;
   image_url: string | null;
   sku: string | null;
+  inventory?: number | null;
+  status?: string | null;
 };
 
 type CartItem = {
@@ -175,6 +182,17 @@ function getButtonClass(buttonStyle: string) {
   return "rounded-2xl";
 }
 
+function getStoreVisibilityStatus(tenant: Tenant | null) {
+  if (tenant?.store_status) return tenant.store_status;
+  if (tenant?.status) return tenant.status;
+  if (tenant?.is_published === false) return "draft";
+  return "active";
+}
+
+function isStorePublic(status: string) {
+  return status === "active" || status === "published";
+}
+
 export default function StoreCheckoutPage() {
   const supabase = createClient();
   const params = useParams();
@@ -200,6 +218,10 @@ export default function StoreCheckoutPage() {
     useState<LoyaltySettings | null>(null);
   const [loyaltyAccount, setLoyaltyAccount] =
     useState<LoyaltyAccount | null>(null);
+
+  const [storeStatus, setStoreStatus] = useState("active");
+  const [canManageStore, setCanManageStore] = useState(false);
+  const [storeUnavailable, setStoreUnavailable] = useState(false);
 
   const [redeemPoints, setRedeemPoints] = useState("");
   const [useLoyaltyPoints, setUseLoyaltyPoints] = useState(false);
@@ -252,6 +274,15 @@ export default function StoreCheckoutPage() {
     return Number(product?.price || 0) + Number(variant?.price_adjustment || 0);
   };
 
+  const getItemInventory = (item: CartItem) => {
+    const product = getProduct(item);
+    const variant = getVariant(item);
+
+    return variant
+      ? Number(variant.inventory || 0)
+      : Number(product?.inventory || 0);
+  };
+
   const selectedShippingZone = useMemo(() => {
     return shippingZones.find((zone) => zone.id === shippingZoneId) || null;
   }, [shippingZones, shippingZoneId]);
@@ -271,25 +302,25 @@ export default function StoreCheckoutPage() {
 
   const maxRedeemableBySettings =
     loyaltySettings?.maximum_points_per_order !== null &&
-      loyaltySettings?.maximum_points_per_order !== undefined
+    loyaltySettings?.maximum_points_per_order !== undefined
       ? Math.min(
-        maxRedeemableByBalance,
-        Number(loyaltySettings.maximum_points_per_order)
-      )
+          maxRedeemableByBalance,
+          Number(loyaltySettings.maximum_points_per_order)
+        )
       : maxRedeemableByBalance;
 
   const selectedRedeemPoints = useLoyaltyPoints
     ? Math.min(
-      Number(redeemPoints || 0),
-      maxRedeemableBySettings,
-      Math.max(
-        0,
-        Math.floor(
-          (subtotal + shippingFee - 0.01) /
-          Math.max(Number(loyaltySettings?.currency_per_point || 0), 0.01)
+        Number(redeemPoints || 0),
+        maxRedeemableBySettings,
+        Math.max(
+          0,
+          Math.floor(
+            (subtotal + shippingFee - 0.01) /
+              Math.max(Number(loyaltySettings?.currency_per_point || 0), 0.01)
+          )
         )
       )
-    )
     : 0;
 
   const loyaltyDiscount =
@@ -315,6 +346,8 @@ export default function StoreCheckoutPage() {
     try {
       setLoading(true);
       setErrorMessage("");
+      setStoreUnavailable(false);
+      setCanManageStore(false);
 
       const {
         data: { user },
@@ -327,7 +360,7 @@ export default function StoreCheckoutPage() {
 
       const { data: tenantData, error: tenantError } = await supabase
         .from("tenants")
-        .select("id,name,slug,logo_url,currency,contact_email,support_phone")
+        .select("*")
         .eq("slug", slug)
         .single();
 
@@ -336,16 +369,41 @@ export default function StoreCheckoutPage() {
         return;
       }
 
-      setTenant(tenantData);
+      const resolvedTenant = tenantData as Tenant;
+      const resolvedStoreStatus = getStoreVisibilityStatus(resolvedTenant);
+
+      setTenant(resolvedTenant);
+      setStoreStatus(resolvedStoreStatus);
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("tenant_id, role")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      const userCanManageStore =
+        profile?.tenant_id === resolvedTenant.id &&
+        ["owner", "store_owner", "admin", "super_admin"].includes(
+          profile?.role || ""
+        );
+
+      setCanManageStore(userCanManageStore);
+
+      if (!isStorePublic(resolvedStoreStatus) && !userCanManageStore) {
+        setStoreUnavailable(true);
+        setCart(null);
+        setCartItems([]);
+        return;
+      }
 
       await supabase.rpc("ensure_storefront_settings", {
-        p_tenant_id: tenantData.id,
+        p_tenant_id: resolvedTenant.id,
       });
 
       const { data: storefrontSettingsData } = await supabase
         .from("storefront_settings")
         .select("*")
-        .eq("tenant_id", tenantData.id)
+        .eq("tenant_id", resolvedTenant.id)
         .eq("status", "active")
         .maybeSingle();
 
@@ -357,7 +415,7 @@ export default function StoreCheckoutPage() {
       const { data: cartData, error: cartError } = await supabase
         .from("carts")
         .select("*")
-        .eq("tenant_id", tenantData.id)
+        .eq("tenant_id", resolvedTenant.id)
         .eq("user_id", user.id)
         .eq("status", "active")
         .maybeSingle();
@@ -386,7 +444,9 @@ export default function StoreCheckoutPage() {
             id,
             name,
             image_url,
-            price
+            price,
+            inventory,
+            status
           ),
           variant:product_variants (
             id,
@@ -395,7 +455,9 @@ export default function StoreCheckoutPage() {
             option_value,
             price_adjustment,
             image_url,
-            sku
+            sku,
+            inventory,
+            status
           )
         `)
         .eq("cart_id", cartData.id);
@@ -405,12 +467,29 @@ export default function StoreCheckoutPage() {
         return;
       }
 
-      setCartItems(cartItemsData || []);
+      const safeCartItems = (cartItemsData || []).filter((item: any) => {
+        const product = Array.isArray(item.product)
+          ? item.product[0]
+          : item.product;
+
+        const variant = item.variant
+          ? Array.isArray(item.variant)
+            ? item.variant[0]
+            : item.variant
+          : null;
+
+        if (!product || product.status !== "active") return false;
+        if (variant && variant.status !== "active") return false;
+
+        return true;
+      });
+
+      setCartItems(safeCartItems);
 
       const { data: ensuredProfileId } = await supabase.rpc(
         "ensure_customer_profile",
         {
-          p_tenant_id: tenantData.id,
+          p_tenant_id: resolvedTenant.id,
           p_user_id: user.id,
           p_full_name:
             user.user_metadata?.full_name || user.user_metadata?.name || null,
@@ -433,7 +512,7 @@ export default function StoreCheckoutPage() {
           setPhone(profileData.phone || user.phone || "");
 
           await supabase.rpc("ensure_loyalty_settings", {
-            p_tenant_id: tenantData.id,
+            p_tenant_id: resolvedTenant.id,
           });
 
           const { data: settingsData } = await supabase
@@ -451,7 +530,7 @@ export default function StoreCheckoutPage() {
               allow_points_redemption,
               status
             `)
-            .eq("tenant_id", tenantData.id)
+            .eq("tenant_id", resolvedTenant.id)
             .maybeSingle();
 
           setLoyaltySettings(settingsData || null);
@@ -459,7 +538,7 @@ export default function StoreCheckoutPage() {
           const { data: loyaltyAccountId } = await supabase.rpc(
             "ensure_customer_loyalty_account",
             {
-              p_tenant_id: tenantData.id,
+              p_tenant_id: resolvedTenant.id,
               p_customer_profile_id: profileData.id,
               p_user_id: user.id,
             }
@@ -479,7 +558,7 @@ export default function StoreCheckoutPage() {
         const { data: addressData } = await supabase
           .from("customer_addresses")
           .select("*")
-          .eq("tenant_id", tenantData.id)
+          .eq("tenant_id", resolvedTenant.id)
           .eq("user_id", user.id)
           .eq("status", "active")
           .order("is_default", { ascending: false })
@@ -502,7 +581,7 @@ export default function StoreCheckoutPage() {
       const { data: zonesData } = await supabase
         .from("shipping_zones")
         .select("id,name,fee,estimated_days")
-        .eq("tenant_id", tenantData.id)
+        .eq("tenant_id", resolvedTenant.id)
         .eq("status", "active")
         .order("fee", { ascending: true });
 
@@ -525,6 +604,11 @@ export default function StoreCheckoutPage() {
   }, [slug]);
 
   const validateCheckout = () => {
+    if (!isStorePublic(storeStatus)) {
+      setErrorMessage("This store is not accepting checkout right now.");
+      return false;
+    }
+
     if (!tenant || !cart) {
       setErrorMessage("Cart not found.");
       return false;
@@ -533,6 +617,27 @@ export default function StoreCheckoutPage() {
     if (cartItems.length === 0) {
       setErrorMessage("Your cart is empty.");
       return false;
+    }
+
+    for (const item of cartItems) {
+      const product = getProduct(item);
+      const variant = getVariant(item);
+      const itemInventory = getItemInventory(item);
+
+      if (!product || product.status !== "active") {
+        setErrorMessage("One or more products in your cart are unavailable.");
+        return false;
+      }
+
+      if (variant && variant.status !== "active") {
+        setErrorMessage("One or more selected options are unavailable.");
+        return false;
+      }
+
+      if (itemInventory > 0 && Number(item.quantity || 0) > itemInventory) {
+        setErrorMessage(`${product.name} does not have enough stock.`);
+        return false;
+      }
     }
 
     if (!fullName.trim()) {
@@ -704,6 +809,13 @@ export default function StoreCheckoutPage() {
         return;
       }
 
+      const latestStoreStatus = getStoreVisibilityStatus(tenant);
+
+      if (!isStorePublic(latestStoreStatus)) {
+        setErrorMessage("This store is not accepting checkout right now.");
+        return;
+      }
+
       const savedAddressId = await saveCheckoutAddressIfNeeded();
 
       if (customerProfile) {
@@ -846,7 +958,7 @@ export default function StoreCheckoutPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
         <div className="rounded-3xl bg-white p-8 shadow-sm">
           <p className="text-slate-500">Loading secure checkout...</p>
         </div>
@@ -856,10 +968,10 @@ export default function StoreCheckoutPage() {
 
   if (!tenant) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center px-6">
-        <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-8 text-center max-w-md">
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6">
+        <div className="max-w-md rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm">
           <h1 className="text-2xl font-bold">Store not found</h1>
-          <p className="text-slate-500 mt-2">
+          <p className="mt-2 text-slate-500">
             This checkout page could not find the store.
           </p>
         </div>
@@ -867,26 +979,30 @@ export default function StoreCheckoutPage() {
     );
   }
 
+  if (storeUnavailable) {
+    return <StoreUnavailable tenant={tenant} status={storeStatus} />;
+  }
+
   if (!cart || cartItems.length === 0) {
     return (
       <div className="min-h-screen bg-slate-50">
         <CheckoutHeader tenant={tenant} settings={storefrontSettings} />
 
-        <div className="max-w-3xl mx-auto px-6 py-16">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-10 text-center">
+        <div className="mx-auto max-w-3xl px-6 py-16">
+          <div className="rounded-3xl border border-slate-200 bg-white p-10 text-center shadow-sm">
             <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-950 text-white">
               🛒
             </div>
 
             <h1 className="text-3xl font-bold">Your cart is empty</h1>
 
-            <p className="text-slate-500 mt-3">
+            <p className="mt-3 text-slate-500">
               Add products to your cart before checkout.
             </p>
 
             <a
               href={`/store/${tenant.slug}`}
-              className="inline-block bg-slate-950 text-white px-6 py-3 rounded-2xl mt-6"
+              className="mt-6 inline-block rounded-2xl bg-slate-950 px-6 py-3 text-white"
             >
               Back to Store
             </a>
@@ -898,9 +1014,17 @@ export default function StoreCheckoutPage() {
 
   return (
     <div className="min-h-screen bg-slate-50">
+      {canManageStore && !isStorePublic(storeStatus) && (
+        <div className="border-b border-yellow-200 bg-yellow-50 px-6 py-3 text-center text-sm text-yellow-800">
+          Preview mode: this store is currently{" "}
+          <strong className="capitalize">{storeStatus}</strong>. Checkout is
+          disabled until the store is published/active.
+        </div>
+      )}
+
       <CheckoutHeader tenant={tenant} settings={storefrontSettings} />
 
-      <main className="max-w-7xl mx-auto px-6 py-8 lg:py-12">
+      <main className="mx-auto max-w-7xl px-6 py-8 lg:py-12">
         <div className="mb-8 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <a
@@ -924,6 +1048,13 @@ export default function StoreCheckoutPage() {
             🔒 100% secure checkout powered by Paystack
           </div>
         </div>
+
+        {!isStorePublic(storeStatus) && (
+          <div className="mb-6 rounded-2xl border border-yellow-200 bg-yellow-50 p-4 text-yellow-800">
+            This store is in preview mode. Checkout is disabled until the store
+            is active.
+          </div>
+        )}
 
         <div className="mb-8 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -1027,7 +1158,7 @@ export default function StoreCheckoutPage() {
                 description="Use a saved address or enter a new one for this order."
                 action={
                   <a
-                    href="/customer/profile"
+                    href={`/customer/profile?store=${tenant.slug}`}
                     className="text-sm font-medium text-blue-600 hover:underline"
                   >
                     Manage addresses
@@ -1225,10 +1356,78 @@ export default function StoreCheckoutPage() {
             maxRedeemableBySettings={maxRedeemableBySettings}
             handlePayNow={handlePayNow}
             paying={paying}
+            storeIsPublic={isStorePublic(storeStatus)}
+            tenantSlug={tenant.slug}
           />
         </div>
       </main>
     </div>
+  );
+}
+
+function StoreUnavailable({
+  tenant,
+  status,
+}: {
+  tenant: Tenant;
+  status: string;
+}) {
+  const title =
+    status === "paused"
+      ? "This store is temporarily paused"
+      : status === "suspended"
+      ? "This store is currently unavailable"
+      : "This store is not live yet";
+
+  const message =
+    status === "paused"
+      ? "The merchant has temporarily paused this storefront. Checkout is not available right now."
+      : status === "suspended"
+      ? "This storefront cannot accept checkout at the moment."
+      : "The merchant is still preparing this storefront. Checkout will be available when the store goes live.";
+
+  return (
+    <main className="min-h-screen bg-slate-950 px-6 py-16 text-white">
+      <div className="mx-auto flex min-h-[70vh] max-w-3xl items-center justify-center">
+        <section className="w-full rounded-[2rem] border border-white/10 bg-white/10 p-8 text-center shadow-2xl backdrop-blur">
+          <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-3xl bg-white text-3xl font-bold text-slate-950">
+            {tenant.logo_url ? (
+              <img
+                src={tenant.logo_url}
+                alt={tenant.name}
+                className="h-full w-full rounded-3xl object-cover"
+              />
+            ) : (
+              tenant.name.slice(0, 1)
+            )}
+          </div>
+
+          <p className="text-sm font-semibold uppercase tracking-wide text-sky-300">
+            StoreForge checkout
+          </p>
+
+          <h1 className="mt-4 text-4xl font-bold tracking-tight">{title}</h1>
+
+          <p className="mx-auto mt-4 max-w-xl text-slate-300">{message}</p>
+
+          <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+            <a
+              href="/"
+              className="rounded-2xl bg-white px-6 py-3 font-semibold text-slate-950 hover:bg-slate-200"
+            >
+              Back to StoreForge
+            </a>
+
+            <a
+              href={`/store/${tenant.slug}`}
+              className="rounded-2xl border border-white/15 px-6 py-3 font-semibold text-white hover:bg-white/10"
+            >
+              Visit store
+            </a>
+          </div>
+        </section>
+      </div>
+    </main>
   );
 }
 
@@ -1273,7 +1472,7 @@ function CheckoutHeader({
           </a>
 
           <a
-            href="/customer/profile"
+            href={`/customer/profile?store=${tenant.slug}`}
             className="text-sm text-slate-500 hover:text-black"
           >
             My Profile
@@ -1294,10 +1493,17 @@ function CheckoutHeader({
           </a>
 
           <a
-            href="/customer/loyalty"
+            href={`/customer/loyalty?store=${tenant.slug}`}
             className="text-sm text-slate-500 hover:text-black"
           >
             My Rewards
+          </a>
+
+          <a
+            href={`/customer/notifications?store=${tenant.slug}`}
+            className="text-sm text-slate-500 hover:text-black"
+          >
+            Notifications
           </a>
 
           <CustomerNotificationBell tenantId={tenant.id} />
@@ -1362,14 +1568,16 @@ function StepPill({
 }) {
   return (
     <div
-      className={`flex items-center gap-3 rounded-2xl border p-4 ${active
+      className={`flex items-center gap-3 rounded-2xl border p-4 ${
+        active
           ? "border-blue-200 bg-blue-50 text-blue-700"
           : "border-slate-200 bg-slate-50 text-slate-500"
-        }`}
+      }`}
     >
       <span
-        className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold ${active ? "bg-blue-600 text-white" : "bg-slate-200 text-slate-500"
-          }`}
+        className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold ${
+          active ? "bg-blue-600 text-white" : "bg-slate-200 text-slate-500"
+        }`}
       >
         {number}
       </span>
@@ -1410,15 +1618,17 @@ function MethodCard({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-2xl border p-5 text-left transition ${selected
+      className={`rounded-2xl border p-5 text-left transition ${
+        selected
           ? "border-blue-500 bg-blue-50 ring-2 ring-blue-100"
           : "border-slate-200 bg-white hover:bg-slate-50"
-        }`}
+      }`}
     >
       <div className="flex items-start gap-3">
         <span
-          className={`mt-1 flex h-5 w-5 items-center justify-center rounded-full border ${selected ? "border-blue-600 bg-blue-600" : "border-slate-300"
-            }`}
+          className={`mt-1 flex h-5 w-5 items-center justify-center rounded-full border ${
+            selected ? "border-blue-600 bg-blue-600" : "border-slate-300"
+          }`}
         >
           {selected && <span className="h-2 w-2 rounded-full bg-white" />}
         </span>
@@ -1454,6 +1664,8 @@ function OrderSummary({
   maxRedeemableBySettings,
   handlePayNow,
   paying,
+  storeIsPublic,
+  tenantSlug,
 }: {
   cartItems: CartItem[];
   money: (amount: number) => string;
@@ -1474,6 +1686,8 @@ function OrderSummary({
   maxRedeemableBySettings: number;
   handlePayNow: () => void;
   paying: boolean;
+  storeIsPublic: boolean;
+  tenantSlug: string;
 }) {
   return (
     <aside className="h-fit rounded-3xl border border-slate-200 bg-white p-6 shadow-sm lg:sticky lg:top-28">
@@ -1552,7 +1766,7 @@ function OrderSummary({
             </div>
 
             <a
-              href="/customer/loyalty"
+              href={`/customer/loyalty?store=${tenantSlug}`}
               className="text-xs font-medium text-blue-700 hover:underline"
             >
               My Rewards
@@ -1648,7 +1862,7 @@ function OrderSummary({
 
       <button
         onClick={handlePayNow}
-        disabled={paying || cartItems.length === 0}
+        disabled={paying || cartItems.length === 0 || !storeIsPublic}
         className="mt-6 w-full rounded-2xl bg-blue-600 py-4 font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
       >
         {paying ? "Redirecting to payment..." : "Proceed to payment →"}
@@ -1672,8 +1886,9 @@ function SummaryRow({
 }) {
   return (
     <div
-      className={`flex justify-between ${success ? "text-green-700" : "text-slate-600"
-        }`}
+      className={`flex justify-between ${
+        success ? "text-green-700" : "text-slate-600"
+      }`}
     >
       <span>{label}</span>
       <span className="font-medium">{value}</span>

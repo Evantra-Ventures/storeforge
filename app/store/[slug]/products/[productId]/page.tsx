@@ -73,6 +73,17 @@ const defaultStorefrontSettings: StorefrontSettings = {
   status: "active",
 };
 
+function getStoreVisibilityStatus(tenant: any) {
+  if (tenant?.store_status) return tenant.store_status;
+  if (tenant?.status) return tenant.status;
+  if (tenant?.is_published === false) return "draft";
+  return "active";
+}
+
+function isStorePublic(status: string) {
+  return status === "active" || status === "published";
+}
+
 function formatMoney(currency: string, amount: number) {
   return `${currency} ${Number(amount || 0).toFixed(2)}`;
 }
@@ -99,17 +110,31 @@ export async function generateMetadata({ params }: ProductPageProps) {
 
   const { data: tenant } = await supabase
     .from("tenants")
-    .select("id,name,slug")
+    .select("*")
     .eq("slug", params.slug)
     .single();
 
   if (!tenant) return { title: "Product Not Found" };
+
+  const storeStatus = getStoreVisibilityStatus(tenant);
+
+  if (!isStorePublic(storeStatus)) {
+    return {
+      title: `${tenant.name} is not available | StoreForge`,
+      description: `${tenant.name} is currently not available for public shopping.`,
+      robots: {
+        index: false,
+        follow: false,
+      },
+    };
+  }
 
   const { data: product } = await supabase
     .from("products")
     .select("*")
     .eq("id", params.productId)
     .eq("tenant_id", tenant.id)
+    .eq("status", "active")
     .single();
 
   if (!product) return { title: "Product Not Found" };
@@ -143,6 +168,35 @@ export default async function ProductPage({ params }: ProductPageProps) {
 
   if (!tenant) notFound();
 
+  const storeStatus = getStoreVisibilityStatus(tenant);
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+
+  let canManageStore = false;
+
+  if (user) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("tenant_id, role")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    canManageStore =
+      profile?.tenant_id === tenant.id &&
+      ["owner", "store_owner", "admin", "super_admin"].includes(
+        profile?.role || ""
+      );
+  }
+
+  if (!isStorePublic(storeStatus) && !canManageStore) {
+    return (
+      <StoreUnavailable
+        tenant={tenant}
+        status={storeStatus}
+        siteUrl={siteUrl}
+      />
+    );
+  }
+
   await supabase.rpc("ensure_storefront_settings", {
     p_tenant_id: tenant.id,
   });
@@ -164,9 +218,8 @@ export default async function ProductPage({ params }: ProductPageProps) {
 
   const reviewModerationEnabled = tenant.review_moderation_enabled ?? false;
   const currency = tenant.currency || "GHS";
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
-  const { data: product } = await supabase
+  let productQuery = supabase
     .from("products")
     .select(`
       *,
@@ -177,9 +230,13 @@ export default async function ProductPage({ params }: ProductPageProps) {
       )
     `)
     .eq("id", params.productId)
-    .eq("tenant_id", tenant.id)
-    .eq("status", "active")
-    .single();
+    .eq("tenant_id", tenant.id);
+
+  if (!canManageStore) {
+    productQuery = productQuery.eq("status", "active");
+  }
+
+  const { data: product } = await productQuery.single();
 
   if (!product) notFound();
 
@@ -357,6 +414,22 @@ export default async function ProductPage({ params }: ProductPageProps) {
         }}
       />
 
+      {canManageStore && !isStorePublic(storeStatus) && (
+        <div className="border-b border-yellow-200 bg-yellow-50 px-6 py-3 text-center text-sm text-yellow-800">
+          Preview mode: this store is currently{" "}
+          <strong className="capitalize">{storeStatus}</strong>. Customers
+          cannot access this product until the store is published/active.
+        </div>
+      )}
+
+      {canManageStore && product.status !== "active" && (
+        <div className="border-b border-orange-200 bg-orange-50 px-6 py-3 text-center text-sm text-orange-800">
+          Preview mode: this product is currently{" "}
+          <strong className="capitalize">{product.status}</strong>. Customers
+          cannot access it until it is active.
+        </div>
+      )}
+
       <StoreHeader tenant={tenant} settings={settings} />
 
       {(tenant.banner_url || settings.hero_image_url) && (
@@ -462,6 +535,12 @@ export default async function ProductPage({ params }: ProductPageProps) {
                   </span>
                 )}
 
+                {product.status !== "active" && (
+                  <span className="rounded-full bg-orange-100 px-3 py-1 text-sm font-medium text-orange-700">
+                    {product.status}
+                  </span>
+                )}
+
                 {isOutOfStock ? (
                   <span className="rounded-full bg-red-100 px-3 py-1 text-sm font-medium text-red-700">
                     Out of stock
@@ -514,15 +593,22 @@ export default async function ProductPage({ params }: ProductPageProps) {
               </div>
 
               <div className="mt-6">
-                <ProductPurchaseBox
-                  tenantId={tenant.id}
-                  productId={product.id}
-                  basePrice={Number(product.price)}
-                  baseInventory={baseInventory}
-                  currency={currency}
-                  variants={variants || []}
-                  initialWishlisted={initialWishlisted}
-                />
+                {product.status === "active" ? (
+                  <ProductPurchaseBox
+                    tenantId={tenant.id}
+                    productId={product.id}
+                    basePrice={Number(product.price)}
+                    baseInventory={baseInventory}
+                    currency={currency}
+                    variants={variants || []}
+                    initialWishlisted={initialWishlisted}
+                  />
+                ) : (
+                  <div className="rounded-3xl border border-orange-200 bg-orange-50 p-5 text-sm text-orange-800">
+                    This product is currently in preview mode and cannot be
+                    purchased by customers until it is active.
+                  </div>
+                )}
               </div>
 
               <div className="mt-6 flex flex-col gap-4 sm:flex-row">
@@ -574,7 +660,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
                 </div>
 
                 <a
-                  href="/customer/loyalty"
+                  href={`/customer/loyalty?store=${tenant.slug}`}
                   className={`${getButtonClass(
                     settings.button_style
                   )} bg-white px-5 py-3 text-center font-semibold`}
@@ -864,6 +950,74 @@ export default async function ProductPage({ params }: ProductPageProps) {
   );
 }
 
+function StoreUnavailable({
+  tenant,
+  status,
+  siteUrl,
+}: {
+  tenant: any;
+  status: string;
+  siteUrl: string;
+}) {
+  const title =
+    status === "paused"
+      ? "This store is temporarily paused"
+      : status === "suspended"
+      ? "This store is currently unavailable"
+      : "This store is not live yet";
+
+  const message =
+    status === "paused"
+      ? "The merchant has temporarily paused this storefront. Please check back later."
+      : status === "suspended"
+      ? "This storefront cannot be accessed at the moment."
+      : "The merchant is still preparing this storefront. Please check back soon.";
+
+  return (
+    <main className="min-h-screen bg-slate-950 px-6 py-16 text-white">
+      <div className="mx-auto flex min-h-[70vh] max-w-3xl items-center justify-center">
+        <section className="w-full rounded-[2rem] border border-white/10 bg-white/10 p-8 text-center shadow-2xl backdrop-blur">
+          <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-3xl bg-white text-3xl font-bold text-slate-950">
+            {tenant?.logo_url ? (
+              <img
+                src={tenant.logo_url}
+                alt={tenant.name}
+                className="h-full w-full rounded-3xl object-cover"
+              />
+            ) : (
+              tenant?.name?.slice(0, 1) || "S"
+            )}
+          </div>
+
+          <p className="text-sm font-semibold uppercase tracking-wide text-sky-300">
+            StoreForge storefront
+          </p>
+
+          <h1 className="mt-4 text-4xl font-bold tracking-tight">{title}</h1>
+
+          <p className="mx-auto mt-4 max-w-xl text-slate-300">{message}</p>
+
+          <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+            <a
+              href="/"
+              className="rounded-2xl bg-white px-6 py-3 font-semibold text-slate-950 hover:bg-slate-200"
+            >
+              Back to StoreForge
+            </a>
+
+            <a
+              href={siteUrl}
+              className="rounded-2xl border border-white/15 px-6 py-3 font-semibold text-white hover:bg-white/10"
+            >
+              Explore platform
+            </a>
+          </div>
+        </section>
+      </div>
+    </main>
+  );
+}
+
 function StoreHeader({
   tenant,
   settings,
@@ -907,7 +1061,7 @@ function StoreHeader({
           </a>
 
           <a
-            href="/customer/profile"
+            href={`/customer/profile?store=${tenant.slug}`}
             className="text-sm text-slate-500 hover:text-slate-950"
           >
             My Profile
@@ -928,10 +1082,17 @@ function StoreHeader({
           </a>
 
           <a
-            href="/customer/loyalty"
+            href={`/customer/loyalty?store=${tenant.slug}`}
             className="text-sm text-slate-500 hover:text-slate-950"
           >
             My Rewards
+          </a>
+
+          <a
+            href={`/customer/notifications?store=${tenant.slug}`}
+            className="text-sm text-slate-500 hover:text-slate-950"
+          >
+            Notifications
           </a>
 
           <CustomerNotificationBell tenantId={tenant.id} />

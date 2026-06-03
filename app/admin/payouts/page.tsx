@@ -40,17 +40,17 @@ type Payout = {
   paid_at: string | null;
   rejected_at: string | null;
   tenant:
-    | {
-        id: string;
-        name: string;
-        slug: string;
-      }
-    | {
-        id: string;
-        name: string;
-        slug: string;
-      }[]
-    | null;
+  | {
+    id: string;
+    name: string;
+    slug: string;
+  }
+  | {
+    id: string;
+    name: string;
+    slug: string;
+  }[]
+  | null;
   wallet: Wallet | Wallet[];
 };
 
@@ -129,7 +129,9 @@ export default function AdminPayoutsPage() {
         .eq("id", user.id)
         .single();
 
-      if (profileError || profile?.role !== "platform_admin") {
+      const allowedAdminRoles = ["platform_admin", "admin", "super_admin"];
+
+      if (profileError || !allowedAdminRoles.includes(profile?.role || "")) {
         setIsPlatformAdmin(false);
         setErrorMessage("Only platform admins can access payout approvals.");
         return;
@@ -447,9 +449,8 @@ export default function AdminPayoutsPage() {
               return (
                 <div
                   key={payout.id}
-                  className={`border rounded-2xl p-5 ${
-                    isBlocked ? "border-red-200 bg-red-50/40" : ""
-                  }`}
+                  className={`border rounded-2xl p-5 ${isBlocked ? "border-red-200 bg-red-50/40" : ""
+                    }`}
                 >
                   <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5">
                     <div>
@@ -535,11 +536,10 @@ export default function AdminPayoutsPage() {
                           </div>
 
                           <div
-                            className={`border rounded-xl p-3 ${
-                              Number(wallet.platform_balance_due || 0) > 0
+                            className={`border rounded-xl p-3 ${Number(wallet.platform_balance_due || 0) > 0
                                 ? "bg-red-50 border-red-200"
                                 : "bg-slate-50"
-                            }`}
+                              }`}
                           >
                             <p
                               className={
@@ -551,11 +551,10 @@ export default function AdminPayoutsPage() {
                               Platform Due
                             </p>
                             <p
-                              className={`font-semibold mt-1 ${
-                                Number(wallet.platform_balance_due || 0) > 0
+                              className={`font-semibold mt-1 ${Number(wallet.platform_balance_due || 0) > 0
                                   ? "text-red-700"
                                   : ""
-                              }`}
+                                }`}
                             >
                               {money(
                                 Number(wallet.platform_balance_due || 0),
@@ -687,22 +686,19 @@ function StatCard({
 }) {
   return (
     <div
-      className={`rounded-2xl shadow p-6 ${
-        tone === "danger" ? "bg-red-50 border border-red-200" : "bg-white"
-      }`}
+      className={`rounded-2xl shadow p-6 ${tone === "danger" ? "bg-red-50 border border-red-200" : "bg-white"
+        }`}
     >
       <p
-        className={`text-sm ${
-          tone === "danger" ? "text-red-600" : "text-slate-500"
-        }`}
+        className={`text-sm ${tone === "danger" ? "text-red-600" : "text-slate-500"
+          }`}
       >
         {label}
       </p>
 
       <h2
-        className={`text-3xl font-bold mt-2 ${
-          tone === "danger" ? "text-red-700" : ""
-        }`}
+        className={`text-3xl font-bold mt-2 ${tone === "danger" ? "text-red-700" : ""
+          }`}
       >
         {value}
       </h2>

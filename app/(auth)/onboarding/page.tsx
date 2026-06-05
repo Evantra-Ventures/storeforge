@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
@@ -19,17 +20,14 @@ export default function OnboardingPage() {
       .toLowerCase()
       .trim()
       .replace(/[^a-z0-9\s-]/g, "")
-      .replace(/\s+/g, "-");
+      .replace(/\s+/g, "-")
+      .replace(/-+/g, "-");
   };
 
-  const handleStoreNameChange = (
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    const value = e.target.value;
+  const handleStoreNameChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const value = event.target.value;
 
     setStoreName(value);
-
-    // AUTO GENERATE SLUG
     setSlug(generateSlug(value));
   };
 
@@ -38,189 +36,184 @@ export default function OnboardingPage() {
       setLoading(true);
       setErrorMessage("");
 
-      // VALIDATION
-      if (!storeName || !slug) {
-        setErrorMessage("Store name and slug are required.");
+      const safeStoreName = storeName.trim();
+      const safeSlug = generateSlug(slug);
+
+      if (!safeStoreName) {
+        setErrorMessage("Store name is required.");
         return;
       }
 
-      // GET CURRENT USER
+      if (!safeSlug) {
+        setErrorMessage("Store slug is required.");
+        return;
+      }
+
+      if (safeSlug.length < 3) {
+        setErrorMessage("Store slug must be at least 3 characters.");
+        return;
+      }
+
       const {
         data: { user },
         error: userError,
       } = await supabase.auth.getUser();
 
       if (userError || !user) {
-        setErrorMessage("User not authenticated.");
+        setErrorMessage("User not authenticated. Please log in again.");
         return;
       }
 
-      // CHECK IF SLUG EXISTS
-      const { data: existingSlug } = await supabase
-        .from("tenants")
-        .select("id")
-        .eq("slug", slug.toLowerCase())
-        .maybeSingle();
+      const { data: tenantId, error: storeError } = await supabase.rpc(
+        "create_merchant_store",
+        {
+          p_name: safeStoreName,
+          p_slug: safeSlug,
+          p_logo_url: logoUrl.trim() || null,
+          p_primary_color: primaryColor || "#000000",
+        }
+      );
 
-      if (existingSlug) {
-        setErrorMessage("This store slug is already taken.");
+      if (storeError) {
+        setErrorMessage(storeError.message);
         return;
       }
 
-      // CREATE TENANT
-      const { data: tenant, error: tenantError } = await supabase
-        .from("tenants")
-        .insert({
-          name: storeName,
-          slug: slug.toLowerCase(),
-          logo_url: logoUrl || null,
-          primary_color: primaryColor,
-        })
-        .select()
-        .single();
-
-      if (tenantError) {
-        setErrorMessage(tenantError.message);
+      if (!tenantId) {
+        setErrorMessage("Store creation failed. Please try again.");
         return;
       }
 
-      // UPDATE PROFILE
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .update({
-          tenant_id: tenant.id,
-          role: "store_owner",
-        })
-        .eq("id", user.id);
-
-      if (profileError) {
-        setErrorMessage(profileError.message);
-        return;
-      }
-
-      // REDIRECT TO DASHBOARD
-      window.location.href = "/products";
-
+      window.location.href = "/dashboard";
     } catch (error) {
       console.error(error);
-      setErrorMessage("Something went wrong.");
+      setErrorMessage("Something went wrong while creating your store.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 flex items-center justify-center p-8">
-      <div className="bg-white w-full max-w-2xl rounded-2xl shadow-xl p-10">
+    <main className="min-h-screen bg-slate-100 px-6 py-10">
+      <div className="mx-auto flex min-h-[80vh] max-w-3xl items-center justify-center">
+        <section className="w-full rounded-[2rem] border border-slate-200 bg-white p-8 shadow-xl sm:p-10">
+          <div className="mb-8">
+            <div className="mb-6">
+              <Image
+                src="/images/logo/primary-logo.svg"
+                alt="StoreForge"
+                width={180}
+                height={48}
+                priority
+                className="h-9 w-auto"
+              />
+            </div>
 
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold text-slate-900 mb-2">
-            Create Your Store
-          </h1>
-
-          <p className="text-slate-500">
-            Launch your ecommerce storefront with StoreForge.
-          </p>
-        </div>
-
-        {errorMessage && (
-          <div className="mb-6 rounded-lg bg-red-100 text-red-700 p-4">
-            {errorMessage}
-          </div>
-        )}
-
-        <div className="space-y-6">
-
-          {/* STORE NAME */}
-          <div>
-            <label className="block text-sm font-medium mb-2">
-              Store Name
-            </label>
-
-            <input
-              type="text"
-              placeholder="Tech World"
-              value={storeName}
-              onChange={handleStoreNameChange}
-              className="w-full border border-slate-300 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-black"
-            />
-          </div>
-
-          {/* STORE SLUG */}
-          <div>
-            <label className="block text-sm font-medium mb-2">
-              Store Slug
-            </label>
-
-            <input
-              type="text"
-              placeholder="tech-world"
-              value={slug}
-              onChange={(e) =>
-                setSlug(generateSlug(e.target.value))
-              }
-              className="w-full border border-slate-300 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-black"
-            />
-
-            <p className="text-sm text-slate-500 mt-2">
-              Your storefront URL:
+            <p className="text-sm font-semibold uppercase tracking-wide text-sky-600">
+              Merchant onboarding
             </p>
 
-            <div className="mt-1 bg-slate-100 border rounded-lg px-3 py-2 text-sm font-medium text-slate-700">
-              /store/{slug || "your-store"}
+            <h1 className="mt-3 text-4xl font-bold tracking-tight text-slate-950">
+              Create Your Store
+            </h1>
+
+            <p className="mt-3 text-slate-500">
+              Launch your ecommerce storefront with StoreForge. Your store will
+              start as draft until it is ready to publish.
+            </p>
+          </div>
+
+          {errorMessage && (
+            <div className="mb-6 rounded-2xl bg-red-50 p-4 text-red-700">
+              {errorMessage}
             </div>
-          </div>
+          )}
 
-          {/* LOGO URL */}
-          <div>
-            <label className="block text-sm font-medium mb-2">
-              Logo URL (Optional)
-            </label>
+          <div className="space-y-6">
+            <div>
+              <label className="mb-2 block text-sm font-medium text-slate-700">
+                Store Name
+              </label>
 
-            <input
-              type="text"
-              placeholder="https://example.com/logo.png"
-              value={logoUrl}
-              onChange={(e) => setLogoUrl(e.target.value)}
-              className="w-full border border-slate-300 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-black"
-            />
-          </div>
-
-          {/* PRIMARY COLOR */}
-          <div>
-            <label className="block text-sm font-medium mb-2">
-              Brand Color
-            </label>
-
-            <div className="flex items-center gap-4">
               <input
-                type="color"
-                value={primaryColor}
-                onChange={(e) =>
-                  setPrimaryColor(e.target.value)
-                }
-                className="h-14 w-20 border rounded-lg cursor-pointer"
+                type="text"
+                placeholder="Tech World"
+                value={storeName}
+                onChange={handleStoreNameChange}
+                className="w-full rounded-2xl border border-slate-300 px-4 py-4 outline-none transition focus:border-slate-950"
+              />
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-medium text-slate-700">
+                Store Slug
+              </label>
+
+              <input
+                type="text"
+                placeholder="tech-world"
+                value={slug}
+                onChange={(event) => setSlug(generateSlug(event.target.value))}
+                className="w-full rounded-2xl border border-slate-300 px-4 py-4 outline-none transition focus:border-slate-950"
               />
 
-              <div className="text-sm text-slate-600 font-medium">
-                {primaryColor}
+              <p className="mt-3 text-sm text-slate-500">
+                Your storefront URL:
+              </p>
+
+              <div className="mt-2 rounded-xl border border-slate-200 bg-slate-100 px-4 py-3 text-sm font-medium text-slate-700">
+                /store/{slug || "your-store"}
               </div>
             </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-medium text-slate-700">
+                Logo URL optional
+              </label>
+
+              <input
+                type="text"
+                placeholder="https://example.com/logo.png"
+                value={logoUrl}
+                onChange={(event) => setLogoUrl(event.target.value)}
+                className="w-full rounded-2xl border border-slate-300 px-4 py-4 outline-none transition focus:border-slate-950"
+              />
+
+              <p className="mt-2 text-xs text-slate-500">
+                You can skip this now and upload or add branding later from
+                dashboard settings.
+              </p>
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-medium text-slate-700">
+                Brand Color
+              </label>
+
+              <div className="flex items-center gap-4">
+                <input
+                  type="color"
+                  value={primaryColor}
+                  onChange={(event) => setPrimaryColor(event.target.value)}
+                  className="h-14 w-20 cursor-pointer rounded-xl border"
+                />
+
+                <div className="text-sm font-medium text-slate-600">
+                  {primaryColor}
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={handleCreateStore}
+              disabled={loading}
+              className="w-full rounded-2xl bg-slate-950 p-4 font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {loading ? "Creating Store..." : "Create Store"}
+            </button>
           </div>
-
-          {/* BUTTON */}
-          <button
-            onClick={handleCreateStore}
-            disabled={loading}
-            className="w-full bg-black text-white rounded-xl p-4 font-semibold hover:opacity-90 transition disabled:opacity-50"
-          >
-            {loading
-              ? "Creating Store..."
-              : "Create Store"}
-          </button>
-
-        </div>
+        </section>
       </div>
-    </div>
+    </main>
   );
 }

@@ -181,7 +181,7 @@ export default function StartSellingPage() {
             <div className="mb-10 lg:hidden">
               <Link href="/" className="inline-flex items-center">
                 <Image
-                  src="/images/logo/primary-logo.svg"
+                  src="/images/logo/primary-logo.png"
                   alt="StoreForge"
                   width={180}
                   height={48}

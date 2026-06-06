@@ -100,7 +100,7 @@ export default function OnboardingPage() {
           <div className="mb-8">
             <div className="mb-6">
               <Image
-                src="/images/logo/primary-logo.svg"
+                src="/images/logo/primary-logo.png"
                 alt="StoreForge"
                 width={180}
                 height={48}

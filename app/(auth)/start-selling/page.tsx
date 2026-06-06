@@ -5,6 +5,14 @@ import Link from "next/link";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
+function normalizeEmail(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function normalizeStoreName(value: string) {
+  return value.trim().replace(/\s+/g, " ");
+}
+
 export default function StartSellingPage() {
   const supabase = createClient();
 
@@ -24,18 +32,27 @@ export default function StartSellingPage() {
       setErrorMessage("");
       setSuccessMessage("");
 
-      if (!fullName.trim()) {
+      const safeFullName = fullName.trim();
+      const safeStoreName = normalizeStoreName(storeName);
+      const safeEmail = normalizeEmail(email);
+
+      if (!safeFullName) {
         setErrorMessage("Full name is required.");
         return;
       }
 
-      if (!storeName.trim()) {
+      if (!safeStoreName) {
         setErrorMessage("Store name is required.");
         return;
       }
 
-      if (!email.trim()) {
+      if (!safeEmail) {
         setErrorMessage("Email is required.");
+        return;
+      }
+
+      if (!safeEmail.includes("@")) {
+        setErrorMessage("Enter a valid email address.");
         return;
       }
 
@@ -54,19 +71,29 @@ export default function StartSellingPage() {
         return;
       }
 
+      const redirectTo =
+        typeof window !== "undefined"
+          ? `${window.location.origin}/onboarding`
+          : undefined;
+
       const { data, error } = await supabase.auth.signUp({
-        email: email.trim(),
+        email: safeEmail,
         password,
         options: {
+          emailRedirectTo: redirectTo,
           data: {
-            full_name: fullName.trim(),
-            store_name: storeName.trim(),
+            full_name: safeFullName,
+            name: safeFullName,
+
+            store_name: safeStoreName,
+
             role: "store_owner",
+            intended_role: "store_owner",
+            account_type: "merchant",
+            signup_type: "merchant",
+            is_merchant: true,
+            onboarding_required: true,
           },
-          emailRedirectTo:
-            typeof window !== "undefined"
-              ? `${window.location.origin}/onboarding`
-              : undefined,
         },
       });
 
@@ -80,29 +107,35 @@ export default function StartSellingPage() {
         return;
       }
 
-      const { error: profileError } = await supabase.from("profiles").upsert(
-        {
-          id: data.user.id,
-          full_name: fullName.trim(),
-          role: "store_owner",
-        },
-        {
-          onConflict: "id",
-        }
-      );
-
-      if (profileError) {
-        console.warn("Profile upsert warning:", profileError.message);
-      }
-
-      if (!data.session) {
-        setSuccessMessage(
-          "Merchant account created. Please check your email to confirm your account, then sign in."
+      /*
+        This is a best-effort profile update.
+        The secure source of truth for onboarding is auth.users.raw_user_meta_data,
+        which the create_merchant_store RPC reads.
+        If RLS blocks this update, onboarding can still work through the RPC.
+      */
+      if (data.session) {
+        const { error: profileError } = await supabase.from("profiles").upsert(
+          {
+            id: data.user.id,
+            full_name: safeFullName,
+            role: "store_owner",
+          },
+          {
+            onConflict: "id",
+          }
         );
+
+        if (profileError) {
+          console.warn("Profile upsert warning:", profileError.message);
+        }
+
+        window.location.href = "/onboarding";
         return;
       }
 
-      window.location.href = "/onboarding";
+      setSuccessMessage(
+        "Merchant account created. Please check your email to confirm your account, then sign in to continue onboarding."
+      );
     } catch (error) {
       console.error(error);
       setErrorMessage("Something went wrong. Please try again.");
@@ -212,8 +245,8 @@ export default function StartSellingPage() {
                 </h1>
 
                 <p className="mt-3 text-slate-500">
-                  Sign up to create your shop, customize your storefront, and
-                  start managing products and orders.
+                  Sign up as a merchant to create your shop, customize your
+                  storefront, and start managing products and orders.
                 </p>
               </div>
 
@@ -240,6 +273,7 @@ export default function StartSellingPage() {
                     placeholder="Your full name"
                     value={fullName}
                     onChange={(event) => setFullName(event.target.value)}
+                    disabled={loading}
                   />
                 </div>
 
@@ -253,6 +287,7 @@ export default function StartSellingPage() {
                     placeholder="Example: Tech World"
                     value={storeName}
                     onChange={(event) => setStoreName(event.target.value)}
+                    disabled={loading}
                   />
                 </div>
 
@@ -267,6 +302,7 @@ export default function StartSellingPage() {
                     type="email"
                     value={email}
                     onChange={(event) => setEmail(event.target.value)}
+                    disabled={loading}
                   />
                 </div>
 
@@ -281,6 +317,7 @@ export default function StartSellingPage() {
                     placeholder="Create a password"
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
+                    disabled={loading}
                   />
                 </div>
 
@@ -295,8 +332,9 @@ export default function StartSellingPage() {
                     placeholder="Repeat your password"
                     value={confirmPassword}
                     onChange={(event) => setConfirmPassword(event.target.value)}
+                    disabled={loading}
                     onKeyDown={(event) => {
-                      if (event.key === "Enter") {
+                      if (event.key === "Enter" && !loading) {
                         handleMerchantSignup();
                       }
                     }}

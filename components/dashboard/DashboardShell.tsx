@@ -38,7 +38,7 @@ export default function DashboardShell({
                 href="/settings"
                 className="rounded-xl px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
               >
-                User Menu
+                Store Settings
               </Link>
             </div>
           </div>

@@ -127,7 +127,19 @@ export default async function DashboardOverviewPage() {
     .eq("id", user.id)
     .single();
 
-  if (!profile?.tenant_id) {
+  if (!profile) {
+    redirect("/login");
+  }
+
+  if (profile.role === "customer") {
+    redirect("/customer/profile");
+  }
+
+  if (["admin", "super_admin", "platform_admin"].includes(profile.role || "")) {
+    redirect("/admin");
+  }
+
+  if (!profile.tenant_id) {
     redirect("/onboarding");
   }
 
@@ -435,9 +447,8 @@ export default async function DashboardOverviewPage() {
 
       return {
         id: variant.id,
-        name: `${product?.name || "Product"} — ${
-          variant.option_value || variant.name
-        }`,
+        name: `${product?.name || "Product"} — ${variant.option_value || variant.name
+          }`,
         type: "Variant",
         inventory: Number(variant.inventory || 0),
         threshold: Number(variant.low_stock_threshold || 5),
@@ -1119,34 +1130,30 @@ function LaunchChecklistItem({
   return (
     <a
       href={href}
-      className={`flex flex-col gap-4 rounded-2xl border p-4 transition hover:-translate-y-1 hover:shadow-md md:flex-row md:items-center md:justify-between ${
-        completed
+      className={`flex flex-col gap-4 rounded-2xl border p-4 transition hover:-translate-y-1 hover:shadow-md md:flex-row md:items-center md:justify-between ${completed
           ? "border-green-200 bg-green-50"
           : "border-slate-200 bg-slate-50"
-      }`}
+        }`}
     >
       <div className="flex items-start gap-4">
         <div
-          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
-            completed ? "bg-green-600 text-white" : "bg-white text-slate-400"
-          }`}
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold ${completed ? "bg-green-600 text-white" : "bg-white text-slate-400"
+            }`}
         >
           {completed ? "✓" : "!"}
         </div>
 
         <div>
           <h3
-            className={`font-bold ${
-              completed ? "text-green-900" : "text-slate-950"
-            }`}
+            className={`font-bold ${completed ? "text-green-900" : "text-slate-950"
+              }`}
           >
             {title}
           </h3>
 
           <p
-            className={`mt-1 text-sm leading-6 ${
-              completed ? "text-green-700" : "text-slate-500"
-            }`}
+            className={`mt-1 text-sm leading-6 ${completed ? "text-green-700" : "text-slate-500"
+              }`}
           >
             {description}
           </p>
@@ -1154,11 +1161,10 @@ function LaunchChecklistItem({
       </div>
 
       <span
-        className={`w-fit rounded-full px-3 py-1 text-xs font-semibold ${
-          completed
+        className={`w-fit rounded-full px-3 py-1 text-xs font-semibold ${completed
             ? "bg-green-100 text-green-700"
             : "bg-yellow-100 text-yellow-700"
-        }`}
+          }`}
       >
         {completed ? "Complete" : "Needs setup"}
       </span>

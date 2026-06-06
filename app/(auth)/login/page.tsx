@@ -30,7 +30,9 @@ function LoginContent() {
       setLoading(true);
       setErrorMessage("");
 
-      if (!email.trim()) {
+      const safeEmail = email.trim().toLowerCase();
+
+      if (!safeEmail) {
         setErrorMessage("Email is required.");
         return;
       }
@@ -41,7 +43,7 @@ function LoginContent() {
       }
 
       const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
+        email: safeEmail,
         password,
       });
 
@@ -57,20 +59,37 @@ function LoginContent() {
         return;
       }
 
-      const { data: profile } = await supabase
+      const { data: profile, error: profileError } = await supabase
         .from("profiles")
         .select("role, tenant_id")
         .eq("id", userId)
         .maybeSingle();
 
+      if (profileError) {
+        setErrorMessage(profileError.message);
+        return;
+      }
+
       const role = profile?.role || "customer";
+
+      const isPlatformAdmin = ["admin", "super_admin", "platform_admin"].includes(
+        role
+      );
+
+      const isMerchant = ["owner", "store_owner"].includes(role);
+
+      if (isPlatformAdmin) {
+        window.location.href =
+          redirectTo && redirectTo.startsWith("/admin") ? redirectTo : "/admin";
+        return;
+      }
 
       if (redirectTo) {
         window.location.href = redirectTo;
         return;
       }
 
-      if (["owner", "store_owner", "admin", "super_admin"].includes(role)) {
+      if (isMerchant) {
         window.location.href = profile?.tenant_id ? "/dashboard" : "/onboarding";
         return;
       }
@@ -121,13 +140,14 @@ function LoginContent() {
             </div>
 
             <h1 className="text-5xl font-bold leading-tight tracking-tight">
-              Sign in to shop, track orders, or manage your store.
+              Sign in to shop, track orders, manage your store, or control the platform.
             </h1>
 
             <p className="mt-6 text-lg leading-8 text-slate-300">
               Customers can manage orders, wishlist, notifications, and rewards.
               Merchants can access products, orders, marketing, analytics, and
-              storefront settings.
+              storefront settings. Platform admins can manage stores, payouts,
+              orders, and audit logs.
             </p>
 
             <div className="mt-10 grid grid-cols-3 gap-4 border-t border-white/10 pt-8">
@@ -137,19 +157,20 @@ function LoginContent() {
               </div>
 
               <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                <p className="text-3xl font-bold">Save</p>
-                <p className="mt-1 text-sm text-slate-400">wishlist</p>
+                <p className="text-3xl font-bold">Sell</p>
+                <p className="mt-1 text-sm text-slate-400">online</p>
               </div>
 
               <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                <p className="text-3xl font-bold">Grow</p>
-                <p className="mt-1 text-sm text-slate-400">stores</p>
+                <p className="text-3xl font-bold">Admin</p>
+                <p className="mt-1 text-sm text-slate-400">platform</p>
               </div>
             </div>
           </div>
 
           <div className="relative text-sm text-slate-400">
-            One secure account for customer shopping and merchant management.
+            One secure account for customer shopping, merchant management, and
+            platform administration.
           </div>
         </section>
 
@@ -189,8 +210,8 @@ function LoginContent() {
                 </h1>
 
                 <p className="mt-3 text-slate-500">
-                  Sign in to continue shopping, track orders, or manage your
-                  StoreForge dashboard.
+                  Sign in to continue shopping, track orders, manage your
+                  StoreForge dashboard, or access platform admin tools.
                 </p>
               </div>
 
@@ -212,6 +233,7 @@ function LoginContent() {
                     type="email"
                     value={email}
                     onChange={(event) => setEmail(event.target.value)}
+                    disabled={loading}
                   />
                 </div>
 
@@ -235,8 +257,9 @@ function LoginContent() {
                     placeholder="Enter your password"
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
+                    disabled={loading}
                     onKeyDown={(event) => {
-                      if (event.key === "Enter") {
+                      if (event.key === "Enter" && !loading) {
                         handleLogin();
                       }
                     }}
@@ -274,8 +297,8 @@ function LoginContent() {
             </div>
 
             <p className="mt-6 text-center text-xs text-slate-500">
-              Keep your login secure. Store owners should protect customer and
-              order information carefully.
+              Keep your login secure. Store owners and admins should protect
+              customer, order, and payout information carefully.
             </p>
           </div>
         </section>

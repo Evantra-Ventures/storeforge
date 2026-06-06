@@ -93,6 +93,16 @@ function statusClass(value: string | null | undefined) {
   return "bg-yellow-100 text-yellow-700";
 }
 
+function storeStatusClass(value: string | null | undefined) {
+  const status = value || "draft";
+
+  if (status === "active") return "bg-green-100 text-green-700";
+  if (status === "paused") return "bg-yellow-100 text-yellow-700";
+  if (status === "suspended") return "bg-red-100 text-red-700";
+
+  return "bg-slate-100 text-slate-700";
+}
+
 function getButtonClass(buttonStyle: string) {
   if (buttonStyle === "pill") return "rounded-full";
   if (buttonStyle === "sharp") return "rounded-none";
@@ -123,7 +133,7 @@ export default async function DashboardOverviewPage() {
 
   const { data: tenant } = await supabase
     .from("tenants")
-    .select("id,name,slug,logo_url,banner_url,currency")
+    .select("id,name,slug,logo_url,banner_url,currency,status,published_at")
     .eq("id", profile.tenant_id)
     .single();
 
@@ -206,7 +216,7 @@ export default async function DashboardOverviewPage() {
         payment_status,
         delivery_status,
         created_at
-      `,
+      `
       )
       .eq("tenant_id", tenant.id)
       .order("created_at", { ascending: false })
@@ -241,7 +251,7 @@ export default async function DashboardOverviewPage() {
           id,
           name
         )
-      `,
+      `
       )
       .eq("tenant_id", tenant.id)
       .eq("status", "active")
@@ -250,9 +260,7 @@ export default async function DashboardOverviewPage() {
 
     supabase
       .from("notification_email_queue")
-      .select(
-        "id,to_email,subject,type,status,attempts,max_attempts,created_at",
-      )
+      .select("id,to_email,subject,type,status,attempts,max_attempts,created_at")
       .eq("tenant_id", tenant.id)
       .order("created_at", { ascending: false })
       .limit(5),
@@ -311,7 +319,7 @@ export default async function DashboardOverviewPage() {
   const hasLogo = Boolean(tenant.logo_url);
   const hasStorefrontDesign = Boolean(storefrontSettingsData);
   const hasHeroOrBanner = Boolean(
-    storefrontSettings.hero_image_url || tenant.banner_url,
+    storefrontSettings.hero_image_url || tenant.banner_url
   );
   const hasCategories = totalCategories > 0;
   const hasActiveProducts = activeProducts > 0;
@@ -377,11 +385,11 @@ export default async function DashboardOverviewPage() {
   ];
 
   const completedLaunchItems = launchChecklist.filter(
-    (item) => item.completed,
+    (item) => item.completed
   ).length;
 
   const launchProgress = Math.round(
-    (completedLaunchItems / launchChecklist.length) * 100,
+    (completedLaunchItems / launchChecklist.length) * 100
   );
 
   const storeIsLaunchReady =
@@ -395,7 +403,7 @@ export default async function DashboardOverviewPage() {
 
   const totalRevenue = (paidOrdersResult.data || []).reduce(
     (sum: number, order: any) => sum + Number(order.total_amount || 0),
-    0,
+    0
   );
 
   const recentOrders = recentOrdersResult.data || [];
@@ -403,13 +411,13 @@ export default async function DashboardOverviewPage() {
   const lowStockProducts = (productsResult.data || []).filter(
     (product: any) =>
       Number(product.inventory || 0) <=
-      Number(product.low_stock_threshold || 5),
+      Number(product.low_stock_threshold || 5)
   );
 
   const lowStockVariants = (variantsResult.data || []).filter(
     (variant: any) =>
       Number(variant.inventory || 0) <=
-      Number(variant.low_stock_threshold || 5),
+      Number(variant.low_stock_threshold || 5)
   );
 
   const lowStockItems = [
@@ -438,14 +446,12 @@ export default async function DashboardOverviewPage() {
   ].slice(0, 6);
 
   const pendingEmailItems = pendingEmailResult.data || [];
-
-  const heroImage =
-    storefrontSettings.hero_image_url || tenant.banner_url || null;
+  const heroImage = storefrontSettings.hero_image_url || tenant.banner_url || null;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 sm:space-y-8">
       <section
-        className="relative overflow-hidden rounded-[2rem] p-8 text-white shadow-sm"
+        className="relative overflow-hidden rounded-[1.5rem] p-5 text-white shadow-sm sm:rounded-[2rem] sm:p-8"
         style={{
           backgroundColor: storefrontSettings.primary_color,
         }}
@@ -465,45 +471,55 @@ export default async function DashboardOverviewPage() {
           />
         )}
 
-        <div className="relative grid grid-cols-1 gap-8 lg:grid-cols-3 lg:items-center">
-          <div className="lg:col-span-2">
-            <div className="mb-6 inline-flex rounded-full border border-white/10 bg-white/10 px-4 py-2 text-sm text-slate-200">
-              Merchant command center
+        <div className="relative grid grid-cols-1 gap-6 xl:grid-cols-3 xl:items-center">
+          <div className="xl:col-span-2">
+            <div className="mb-5 flex flex-wrap items-center gap-2">
+              <span className="inline-flex rounded-full border border-white/10 bg-white/10 px-4 py-2 text-xs text-slate-200 sm:text-sm">
+                Merchant command center
+              </span>
+
+              <span
+                className={`inline-flex rounded-full px-4 py-2 text-xs font-semibold capitalize sm:text-sm ${storeStatusClass(
+                  tenant.status
+                )}`}
+              >
+                Store: {tenant.status || "draft"}
+              </span>
             </div>
 
-            <div className="flex items-center gap-4">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
               {tenant.logo_url ? (
                 <img
                   src={tenant.logo_url}
                   alt={tenant.name}
-                  className="h-16 w-16 rounded-2xl border border-white/20 object-cover"
+                  className="h-14 w-14 rounded-2xl border border-white/20 object-cover sm:h-16 sm:w-16"
                 />
               ) : (
-                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white text-2xl font-bold text-slate-950">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white text-2xl font-bold text-slate-950 sm:h-16 sm:w-16">
                   {tenant.name.slice(0, 1)}
                 </div>
               )}
 
               <div>
                 <p className="text-sm text-slate-300">Welcome back</p>
-                <h1 className="text-4xl font-bold tracking-tight md:text-5xl">
+                <h1 className="break-words text-3xl font-bold tracking-tight sm:text-4xl md:text-5xl">
                   {tenant.name}
                 </h1>
               </div>
             </div>
 
-            <p className="mt-6 max-w-3xl text-lg leading-8 text-slate-300">
+            <p className="mt-5 max-w-3xl text-base leading-7 text-slate-300 sm:mt-6 sm:text-lg sm:leading-8">
               Track sales, manage orders, monitor stock, follow customer
               activity, customize your storefront, and keep your store running
               from one overview.
             </p>
 
-            <div className="mt-8 flex flex-col gap-4 sm:flex-row">
+            <div className="mt-7 grid grid-cols-1 gap-3 sm:flex sm:flex-wrap">
               <a
                 href={`/store/${tenant.slug}`}
                 className={`${getButtonClass(
-                  storefrontSettings.button_style,
-                )} bg-white px-6 py-4 text-center font-semibold`}
+                  storefrontSettings.button_style
+                )} bg-white px-5 py-3 text-center text-sm font-semibold sm:px-6 sm:py-4`}
                 style={{
                   color: storefrontSettings.primary_color,
                 }}
@@ -514,8 +530,8 @@ export default async function DashboardOverviewPage() {
               <a
                 href="/settings/storefront"
                 className={`${getButtonClass(
-                  storefrontSettings.button_style,
-                )} border border-white/15 px-6 py-4 text-center font-semibold text-white hover:bg-white/10`}
+                  storefrontSettings.button_style
+                )} border border-white/15 px-5 py-3 text-center text-sm font-semibold text-white hover:bg-white/10 sm:px-6 sm:py-4`}
               >
                 Customize storefront
               </a>
@@ -523,39 +539,25 @@ export default async function DashboardOverviewPage() {
               <a
                 href="/orders"
                 className={`${getButtonClass(
-                  storefrontSettings.button_style,
-                )} border border-white/15 px-6 py-4 text-center font-semibold text-white hover:bg-white/10`}
+                  storefrontSettings.button_style
+                )} border border-white/15 px-5 py-3 text-center text-sm font-semibold text-white hover:bg-white/10 sm:px-6 sm:py-4`}
               >
                 View orders
               </a>
             </div>
           </div>
 
-          <div className="rounded-3xl border border-white/10 bg-white/10 p-5 backdrop-blur">
+          <div className="rounded-3xl border border-white/10 bg-white/10 p-4 backdrop-blur sm:p-5">
             <p className="text-sm text-slate-300">Today’s focus</p>
-            <h2 className="mt-2 text-2xl font-bold">Keep operations moving</h2>
+            <h2 className="mt-2 text-xl font-bold sm:text-2xl">
+              Keep operations moving
+            </h2>
 
             <div className="mt-5 space-y-3">
-              <FocusItem
-                label="Pending orders"
-                value={`${pendingOrders}`}
-                href="/orders"
-              />
-              <FocusItem
-                label="Active deliveries"
-                value={`${activeDeliveries}`}
-                href="/orders"
-              />
-              <FocusItem
-                label="Pending emails"
-                value={`${pendingEmails}`}
-                href="/dashboard/marketing/email-queue"
-              />
-              <FocusItem
-                label="Low stock items"
-                value={`${lowStockItems.length}`}
-                href="/products"
-              />
+              <FocusItem label="Pending orders" value={`${pendingOrders}`} href="/orders" />
+              <FocusItem label="Active deliveries" value={`${activeDeliveries}`} href="/orders" />
+              <FocusItem label="Pending emails" value={`${pendingEmails}`} href="/dashboard/marketing/email-queue" />
+              <FocusItem label="Low stock items" value={`${lowStockItems.length}`} href="/products" />
             </div>
           </div>
         </div>
@@ -569,44 +571,25 @@ export default async function DashboardOverviewPage() {
         storeIsLaunchReady={storeIsLaunchReady}
         tenantSlug={tenant.slug}
         storefrontSettings={storefrontSettings}
+        storeStatus={tenant.status || "draft"}
       />
 
-      <section className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          label="Revenue"
-          value={money(currency, totalRevenue)}
-          helper="Paid orders"
-        />
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="Revenue" value={money(currency, totalRevenue)} helper="Paid orders" />
         <StatCard label="Orders" value={totalOrders} helper="Total orders" />
-        <StatCard
-          label="Customers"
-          value={totalCustomers}
-          helper="Customer profiles"
-        />
-        <StatCard
-          label="Products"
-          value={totalProducts}
-          helper="Listed products"
-        />
+        <StatCard label="Customers" value={totalCustomers} helper="Customer profiles" />
+        <StatCard label="Products" value={totalProducts} helper="Listed products" />
       </section>
 
-      <section className="grid grid-cols-1 gap-5 md:grid-cols-4">
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MiniStat label="Pending orders" value={pendingOrders} tone="yellow" />
-        <MiniStat
-          label="Active deliveries"
-          value={activeDeliveries}
-          tone="blue"
-        />
-        <MiniStat
-          label="Unread notifications"
-          value={unreadNotifications}
-          tone="green"
-        />
+        <MiniStat label="Active deliveries" value={activeDeliveries} tone="blue" />
+        <MiniStat label="Unread notifications" value={unreadNotifications} tone="green" />
         <MiniStat label="Failed emails" value={failedEmails} tone="red" />
       </section>
 
-      <section className="grid grid-cols-1 gap-8 xl:grid-cols-3">
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm xl:col-span-2">
+      <section className="grid grid-cols-1 gap-6 xl:grid-cols-3 xl:gap-8">
+        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6 xl:col-span-2">
           <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
               <p
@@ -626,8 +609,8 @@ export default async function DashboardOverviewPage() {
             <a
               href="/orders"
               className={`${getButtonClass(
-                storefrontSettings.button_style,
-              )} border border-slate-200 px-4 py-2 text-sm font-medium hover:bg-slate-50`}
+                storefrontSettings.button_style
+              )} border border-slate-200 px-4 py-2 text-center text-sm font-medium hover:bg-slate-50`}
             >
               View all orders
             </a>
@@ -650,7 +633,7 @@ export default async function DashboardOverviewPage() {
                   <a
                     key={order.id}
                     href={`/orders/${order.id}`}
-                    className="grid grid-cols-1 gap-3 px-4 py-4 transition hover:bg-slate-50 md:grid-cols-5 md:items-center"
+                    className="block px-4 py-4 transition hover:bg-slate-50 md:grid md:grid-cols-5 md:items-center md:gap-4"
                   >
                     <div>
                       <p className="font-semibold">#{order.id.slice(0, 8)}</p>
@@ -661,7 +644,7 @@ export default async function DashboardOverviewPage() {
                       </p>
                     </div>
 
-                    <div>
+                    <div className="mt-3 md:mt-0">
                       <p className="text-sm font-medium">
                         {order.customer_name || "Customer"}
                       </p>
@@ -670,25 +653,29 @@ export default async function DashboardOverviewPage() {
                       </p>
                     </div>
 
-                    <p className="font-bold">
+                    <p className="mt-3 font-bold md:mt-0">
                       {money(currency, Number(order.total_amount || 0))}
                     </p>
 
-                    <span
-                      className={`w-fit rounded-full px-3 py-1 text-xs font-semibold capitalize ${statusClass(
-                        order.payment_status,
-                      )}`}
-                    >
-                      {formatStatus(order.payment_status)}
-                    </span>
+                    <div className="mt-3 md:mt-0">
+                      <span
+                        className={`w-fit rounded-full px-3 py-1 text-xs font-semibold capitalize ${statusClass(
+                          order.payment_status
+                        )}`}
+                      >
+                        {formatStatus(order.payment_status)}
+                      </span>
+                    </div>
 
-                    <span
-                      className={`w-fit rounded-full px-3 py-1 text-xs font-semibold capitalize ${statusClass(
-                        order.delivery_status,
-                      )}`}
-                    >
-                      {formatStatus(order.delivery_status)}
-                    </span>
+                    <div className="mt-3 md:mt-0">
+                      <span
+                        className={`w-fit rounded-full px-3 py-1 text-xs font-semibold capitalize ${statusClass(
+                          order.delivery_status
+                        )}`}
+                      >
+                        {formatStatus(order.delivery_status)}
+                      </span>
+                    </div>
                   </a>
                 ))}
               </div>
@@ -696,7 +683,7 @@ export default async function DashboardOverviewPage() {
           )}
         </div>
 
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
           <div className="mb-6">
             <p className="text-sm font-semibold uppercase tracking-wide text-orange-600">
               Inventory
@@ -718,9 +705,7 @@ export default async function DashboardOverviewPage() {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="font-semibold text-slate-950">
-                        {item.name}
-                      </p>
+                      <p className="font-semibold text-slate-950">{item.name}</p>
                       <p className="mt-1 text-xs text-slate-500">
                         {item.type} · Threshold {item.threshold}
                       </p>
@@ -738,7 +723,7 @@ export default async function DashboardOverviewPage() {
           <a
             href="/products"
             className={`${getButtonClass(
-              storefrontSettings.button_style,
+              storefrontSettings.button_style
             )} mt-5 block px-5 py-3 text-center text-sm font-semibold text-white hover:opacity-90`}
             style={{
               backgroundColor: storefrontSettings.primary_color,
@@ -749,8 +734,8 @@ export default async function DashboardOverviewPage() {
         </div>
       </section>
 
-      <section className="grid grid-cols-1 gap-8 xl:grid-cols-3">
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="grid grid-cols-1 gap-6 xl:grid-cols-3 xl:gap-8">
+        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
           <div className="mb-6">
             <p
               className="text-sm font-semibold uppercase tracking-wide"
@@ -815,7 +800,7 @@ export default async function DashboardOverviewPage() {
             <a
               href="/settings/storefront"
               className={`${getButtonClass(
-                storefrontSettings.button_style,
+                storefrontSettings.button_style
               )} px-5 py-3 text-center text-sm font-semibold text-white hover:opacity-90`}
               style={{
                 backgroundColor: storefrontSettings.primary_color,
@@ -827,7 +812,7 @@ export default async function DashboardOverviewPage() {
             <a
               href={`/store/${tenant.slug}`}
               className={`${getButtonClass(
-                storefrontSettings.button_style,
+                storefrontSettings.button_style
               )} border border-slate-200 px-5 py-3 text-center text-sm font-semibold hover:bg-slate-50`}
             >
               Open storefront
@@ -835,7 +820,7 @@ export default async function DashboardOverviewPage() {
           </div>
         </div>
 
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
           <div className="mb-6">
             <p className="text-sm font-semibold uppercase tracking-wide text-blue-600">
               Email queue
@@ -851,10 +836,7 @@ export default async function DashboardOverviewPage() {
           ) : (
             <div className="space-y-3">
               {pendingEmailItems.map((item: any) => (
-                <div
-                  key={item.id}
-                  className="rounded-2xl border border-slate-100 p-4"
-                >
+                <div key={item.id} className="rounded-2xl border border-slate-100 p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="truncate font-semibold">{item.subject}</p>
@@ -865,7 +847,7 @@ export default async function DashboardOverviewPage() {
 
                     <span
                       className={`rounded-full px-3 py-1 text-xs font-semibold capitalize ${statusClass(
-                        item.status,
+                        item.status
                       )}`}
                     >
                       {item.status}
@@ -883,14 +865,14 @@ export default async function DashboardOverviewPage() {
           <a
             href="/dashboard/marketing/email-queue"
             className={`${getButtonClass(
-              storefrontSettings.button_style,
+              storefrontSettings.button_style
             )} mt-5 block border border-slate-200 px-5 py-3 text-center text-sm font-semibold hover:bg-slate-50`}
           >
             Open email queue
           </a>
         </div>
 
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
           <div className="mb-6">
             <p className="text-sm font-semibold uppercase tracking-wide text-purple-600">
               Quick actions
@@ -902,26 +884,10 @@ export default async function DashboardOverviewPage() {
           </div>
 
           <div className="space-y-3">
-            <QuickAction
-              title="Add or edit products"
-              text="Catalog, pricing, stock, variants, and images."
-              href="/products"
-            />
-            <QuickAction
-              title="Review orders"
-              text="Delivery status, refunds, and customer updates."
-              href="/orders"
-            />
-            <QuickAction
-              title="Send announcements"
-              text="Coupon campaigns and customer notifications."
-              href="/dashboard/marketing/announcement"
-            />
-            <QuickAction
-              title="Check analytics"
-              text="Sales, customers, and store activity."
-              href="/analytics"
-            />
+            <QuickAction title="Add or edit products" text="Catalog, pricing, stock, variants, and images." href="/products" />
+            <QuickAction title="Review orders" text="Delivery status, refunds, and customer updates." href="/orders" />
+            <QuickAction title="Send announcements" text="Coupon campaigns and customer notifications." href="/dashboard/marketing/announcement" />
+            <QuickAction title="Check analytics" text="Sales, customers, and store activity." href="/analytics" />
           </div>
         </div>
       </section>
@@ -939,9 +905,11 @@ function StatCard({
   helper: string;
 }) {
   return (
-    <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+    <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
       <p className="text-sm text-slate-500">{label}</p>
-      <h2 className="mt-3 text-3xl font-bold tracking-tight">{value}</h2>
+      <h2 className="mt-3 break-words text-3xl font-bold tracking-tight">
+        {value}
+      </h2>
       <p className="mt-2 text-sm text-slate-400">{helper}</p>
     </div>
   );
@@ -1018,6 +986,7 @@ function QuickAction({
     </a>
   );
 }
+
 function LaunchChecklistCard({
   checklist,
   progress,
@@ -1026,6 +995,7 @@ function LaunchChecklistCard({
   storeIsLaunchReady,
   tenantSlug,
   storefrontSettings,
+  storeStatus,
 }: {
   checklist: {
     title: string;
@@ -1039,11 +1009,19 @@ function LaunchChecklistCard({
   storeIsLaunchReady: boolean;
   tenantSlug: string;
   storefrontSettings: StorefrontSettings;
+  storeStatus: string;
 }) {
   const nextItem = checklist.find((item) => !item.completed);
 
   return (
-    <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+    <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+      {storeStatus !== "active" && (
+        <div className="mb-6 rounded-2xl border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800">
+          Your store is currently <strong className="capitalize">{storeStatus}</strong>.
+          Customers can only shop after the store is activated by the platform admin.
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-8 xl:grid-cols-3 xl:items-start">
         <div>
           <p
@@ -1085,11 +1063,11 @@ function LaunchChecklistCard({
             </div>
           </div>
 
-          <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+          <div className="mt-6 grid grid-cols-1 gap-3 sm:flex sm:flex-wrap">
             <a
               href={`/store/${tenantSlug}`}
               className={`${getButtonClass(
-                storefrontSettings.button_style,
+                storefrontSettings.button_style
               )} px-5 py-3 text-center text-sm font-semibold text-white hover:opacity-90`}
               style={{
                 backgroundColor: storefrontSettings.primary_color,
@@ -1102,7 +1080,7 @@ function LaunchChecklistCard({
               <a
                 href={nextItem.href}
                 className={`${getButtonClass(
-                  storefrontSettings.button_style,
+                  storefrontSettings.button_style
                 )} border border-slate-200 px-5 py-3 text-center text-sm font-semibold hover:bg-slate-50`}
               >
                 Continue setup

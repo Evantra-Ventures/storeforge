@@ -13,7 +13,7 @@ export default function AdminLayout({
           <div className="border-b border-white/10 px-6 py-6">
             <Link href="/admin" className="inline-flex items-center">
               <Image
-                src="/images/logo/dark-logo.svg"
+                src="/images/logo/dark-logo.png"
                 alt="StoreForge"
                 width={170}
                 height={44}
@@ -47,7 +47,7 @@ export default function AdminLayout({
           <div className="flex items-center justify-between gap-4">
             <Link href="/admin" className="inline-flex items-center">
               <Image
-                src="/images/logo/primary-logo.svg"
+                src="/images/logo/primary-logo.png"
                 alt="StoreForge"
                 width={160}
                 height={44}

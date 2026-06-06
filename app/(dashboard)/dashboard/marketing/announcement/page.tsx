@@ -9,8 +9,8 @@ type Coupon = {
   discount_type: string | null;
   discount_value: number | null;
   status: string;
-  starts_at?: string | null;
-  ends_at?: string | null;
+  starts_at: string | null;
+  expires_at: string | null;
 };
 
 type Campaign = {
@@ -77,7 +77,7 @@ const audienceOptions = [
   {
     value: "marketing_opted_in",
     label: "Marketing Opted In",
-    description: "Customers who opted into email, SMS, or WhatsApp marketing.",
+    description: "Customers who opted into marketing notifications.",
   },
 ];
 
@@ -212,7 +212,9 @@ export default function CustomerAnnouncementsPage() {
 
       const { data: couponData, error: couponError } = await supabase
         .from("coupons")
-        .select("id,code,discount_type,discount_value,status,starts_at,ends_at")
+        .select(
+          "id,code,discount_type,discount_value,status,starts_at,expires_at"
+        )
         .eq("tenant_id", profile.tenant_id)
         .order("created_at", { ascending: false });
 
@@ -275,7 +277,6 @@ export default function CustomerAnnouncementsPage() {
     setErrorMessage("");
     setType("coupon_available");
     setPriority("normal");
-
     setTitle(`New coupon available: ${coupon.code}`);
 
     setMessage(
@@ -283,10 +284,6 @@ export default function CustomerAnnouncementsPage() {
         coupon
       )}.`
     );
-
-    if (!actionUrl) {
-      setActionUrl("");
-    }
   };
 
   const fillMarketingTemplate = () => {
@@ -407,28 +404,30 @@ export default function CustomerAnnouncementsPage() {
   }
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+    <div className="space-y-6 sm:space-y-8">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Customer Announcements</h1>
-          <p className="text-slate-500 mt-2">
+          <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
+            Customer Announcements
+          </h1>
+          <p className="mt-2 max-w-3xl text-slate-500">
             Send coupon alerts and announcements to customers as in-app
             notifications. Customer notification preferences are respected
             automatically.
           </p>
         </div>
 
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex flex-col gap-3 sm:flex-row lg:justify-end">
           <a
             href="/dashboard/marketing/notification-analytics"
-            className="border px-4 py-2 rounded-xl text-sm hover:bg-slate-100"
+            className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-center text-sm font-medium hover:bg-slate-50"
           >
             Notification Analytics
           </a>
 
           <button
             onClick={fetchData}
-            className="bg-black text-white px-4 py-2 rounded-xl text-sm hover:opacity-90"
+            className="rounded-xl bg-slate-950 px-4 py-3 text-sm font-medium text-white hover:bg-slate-800"
           >
             Refresh
           </button>
@@ -436,18 +435,18 @@ export default function CustomerAnnouncementsPage() {
       </div>
 
       {errorMessage && (
-        <div className="bg-red-100 text-red-700 p-4 rounded-xl">
+        <div className="rounded-2xl bg-red-50 p-4 text-red-700">
           {errorMessage}
         </div>
       )}
 
       {successMessage && (
-        <div className="bg-green-100 text-green-700 p-4 rounded-xl">
+        <div className="rounded-2xl bg-green-50 p-4 text-green-700">
           {successMessage}
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-5">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <StatCard label="Campaigns" value={stats.totalCampaigns} />
         <StatCard label="Sent Campaigns" value={stats.sentCampaigns} />
         <StatCard label="Failed Campaigns" value={stats.failedCampaigns} />
@@ -455,22 +454,22 @@ export default function CustomerAnnouncementsPage() {
         <StatCard label="Failed Sends" value={stats.totalFailed} />
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-        <section className="xl:col-span-2 bg-white rounded-2xl shadow p-6 space-y-6">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3 xl:gap-8">
+        <section className="space-y-6 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6 xl:col-span-2">
           <div>
             <h2 className="text-xl font-semibold">Create Announcement</h2>
-            <p className="text-sm text-slate-500 mt-1">
+            <p className="mt-1 text-sm text-slate-500">
               Compose a customer notification campaign. Right now this sends
               in-app notifications only.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <Field label="Type">
               <select
                 value={type}
                 onChange={(e) => setType(e.target.value)}
-                className="border rounded-xl p-3 w-full"
+                className="w-full rounded-xl border border-slate-200 p-3"
               >
                 {campaignTypes.map((item) => (
                   <option key={item.value} value={item.value}>
@@ -484,7 +483,7 @@ export default function CustomerAnnouncementsPage() {
               <select
                 value={audience}
                 onChange={(e) => setAudience(e.target.value)}
-                className="border rounded-xl p-3 w-full"
+                className="w-full rounded-xl border border-slate-200 p-3"
               >
                 {audienceOptions.map((item) => (
                   <option key={item.value} value={item.value}>
@@ -498,7 +497,7 @@ export default function CustomerAnnouncementsPage() {
               <select
                 value={priority}
                 onChange={(e) => setPriority(e.target.value)}
-                className="border rounded-xl p-3 w-full"
+                className="w-full rounded-xl border border-slate-200 p-3"
               >
                 {priorityOptions.map((item) => (
                   <option key={item.value} value={item.value}>
@@ -512,7 +511,7 @@ export default function CustomerAnnouncementsPage() {
               <select
                 value={couponId}
                 onChange={(e) => setCouponId(e.target.value)}
-                className="border rounded-xl p-3 w-full"
+                className="w-full rounded-xl border border-slate-200 p-3"
               >
                 <option value="">Select Coupon</option>
                 {coupons.map((coupon) => (
@@ -524,7 +523,7 @@ export default function CustomerAnnouncementsPage() {
             </Field>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <InfoCard
               title={selectedType?.label || "Type"}
               description={selectedType?.description || ""}
@@ -542,7 +541,7 @@ export default function CustomerAnnouncementsPage() {
           </div>
 
           {selectedCoupon && (
-            <div className="bg-slate-50 rounded-2xl p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div className="flex flex-col gap-4 rounded-2xl bg-slate-50 p-4 md:flex-row md:items-center md:justify-between">
               <div>
                 <p className="font-semibold">{selectedCoupon.code}</p>
                 <p className="text-sm text-slate-500">
@@ -550,37 +549,37 @@ export default function CustomerAnnouncementsPage() {
                   {selectedCoupon.status}
                 </p>
 
-                {(selectedCoupon.starts_at || selectedCoupon.ends_at) && (
-                  <p className="text-xs text-slate-400 mt-1">
+                {(selectedCoupon.starts_at || selectedCoupon.expires_at) && (
+                  <p className="mt-1 text-xs text-slate-400">
                     {selectedCoupon.starts_at
                       ? `Starts ${new Date(
                           selectedCoupon.starts_at
                         ).toLocaleDateString()}`
                       : "No start date"}
                     {" · "}
-                    {selectedCoupon.ends_at
-                      ? `Ends ${new Date(
-                          selectedCoupon.ends_at
+                    {selectedCoupon.expires_at
+                      ? `Expires ${new Date(
+                          selectedCoupon.expires_at
                         ).toLocaleDateString()}`
-                      : "No end date"}
+                      : "No expiry date"}
                   </p>
                 )}
               </div>
 
               <button
                 onClick={fillCouponTemplate}
-                className="border px-4 py-2 rounded-xl text-sm hover:bg-white"
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm hover:bg-slate-50"
               >
                 Use Coupon Template
               </button>
             </div>
           )}
 
-          <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
             <button
               type="button"
               onClick={fillMarketingTemplate}
-              className="border px-4 py-2 rounded-xl text-sm hover:bg-slate-100"
+              className="rounded-xl border border-slate-200 px-4 py-2 text-sm hover:bg-slate-50"
             >
               Use Marketing Template
             </button>
@@ -594,7 +593,7 @@ export default function CustomerAnnouncementsPage() {
                 setImageUrl("");
                 setCouponId("");
               }}
-              className="border px-4 py-2 rounded-xl text-sm hover:bg-slate-100"
+              className="rounded-xl border border-slate-200 px-4 py-2 text-sm hover:bg-slate-50"
             >
               Clear Form
             </button>
@@ -606,9 +605,9 @@ export default function CustomerAnnouncementsPage() {
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Announcement title"
               maxLength={120}
-              className="w-full border rounded-xl p-3"
+              className="w-full rounded-xl border border-slate-200 p-3"
             />
-            <p className="text-xs text-slate-400 mt-1">
+            <p className="mt-1 text-xs text-slate-400">
               {title.length}/120 characters
             </p>
           </Field>
@@ -619,20 +618,20 @@ export default function CustomerAnnouncementsPage() {
               onChange={(e) => setMessage(e.target.value)}
               placeholder="Write the notification message customers will see..."
               maxLength={500}
-              className="w-full border rounded-xl p-3 min-h-[130px]"
+              className="min-h-[130px] w-full rounded-xl border border-slate-200 p-3"
             />
-            <p className="text-xs text-slate-400 mt-1">
+            <p className="mt-1 text-xs text-slate-400">
               {message.length}/500 characters
             </p>
           </Field>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <Field label="Action URL Optional">
               <input
                 value={actionUrl}
                 onChange={(e) => setActionUrl(e.target.value)}
                 placeholder="/store/my-shop"
-                className="border rounded-xl p-3 w-full"
+                className="w-full rounded-xl border border-slate-200 p-3"
               />
             </Field>
 
@@ -641,7 +640,7 @@ export default function CustomerAnnouncementsPage() {
                 value={imageUrl}
                 onChange={(e) => setImageUrl(e.target.value)}
                 placeholder="https://..."
-                className="border rounded-xl p-3 w-full"
+                className="w-full rounded-xl border border-slate-200 p-3"
               />
             </Field>
           </div>
@@ -649,26 +648,26 @@ export default function CustomerAnnouncementsPage() {
           <button
             onClick={handleSend}
             disabled={sending}
-            className="bg-black text-white px-6 py-3 rounded-xl font-medium disabled:opacity-50"
+            className="w-full rounded-xl bg-slate-950 px-6 py-3 font-medium text-white hover:bg-slate-800 disabled:opacity-50 sm:w-fit"
           >
             {sending ? "Sending..." : "Send Announcement"}
           </button>
         </section>
 
-        <aside className="bg-white rounded-2xl shadow p-6 h-fit xl:sticky xl:top-8">
+        <aside className="h-fit rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6 xl:sticky xl:top-8">
           <h2 className="text-xl font-semibold">Preview</h2>
-          <p className="text-sm text-slate-500 mt-1">
+          <p className="mt-1 text-sm text-slate-500">
             This is how the notification may appear to customers.
           </p>
 
-          <div className="border rounded-2xl p-4 mt-6">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="px-3 py-1 rounded-full bg-blue-100 text-blue-700 text-xs capitalize">
+          <div className="mt-6 rounded-2xl border border-slate-200 p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full bg-blue-100 px-3 py-1 text-xs capitalize text-blue-700">
                 {formatLabel(type)}
               </span>
 
               <span
-                className={`px-3 py-1 rounded-full text-xs capitalize ${
+                className={`rounded-full px-3 py-1 text-xs capitalize ${
                   priority === "urgent" || priority === "high"
                     ? "bg-orange-100 text-orange-700"
                     : "bg-slate-100 text-slate-700"
@@ -679,34 +678,36 @@ export default function CustomerAnnouncementsPage() {
             </div>
 
             {imageUrl && (
-              <div className="mt-4 rounded-2xl overflow-hidden bg-slate-100 aspect-video">
+              <div className="mt-4 aspect-video overflow-hidden rounded-2xl bg-slate-100">
                 <img
                   src={imageUrl}
                   alt="Announcement preview"
-                  className="w-full h-full object-cover"
+                  className="h-full w-full object-cover"
                 />
               </div>
             )}
 
-            <h3 className="font-semibold mt-4">
+            <h3 className="mt-4 font-semibold">
               {title || "Announcement title"}
             </h3>
 
-            <p className="text-sm text-slate-600 mt-2">
+            <p className="mt-2 text-sm text-slate-600">
               {message ||
                 "Your announcement message will appear here before sending."}
             </p>
 
             {actionUrl && (
-              <p className="text-xs text-blue-600 mt-3">
+              <p className="mt-3 text-xs text-blue-600">
                 Action: {actionUrl}
               </p>
             )}
           </div>
 
-          <div className="bg-slate-50 rounded-2xl p-4 mt-5 text-sm text-slate-600 space-y-2">
+          <div className="mt-5 space-y-2 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
             <p>
-              <span className="font-medium text-slate-900">Preference check:</span>{" "}
+              <span className="font-medium text-slate-900">
+                Preference check:
+              </span>{" "}
               customers who disabled this category will not receive it.
             </p>
             <p>
@@ -721,25 +722,25 @@ export default function CustomerAnnouncementsPage() {
         </aside>
       </div>
 
-      <section className="bg-white rounded-2xl shadow p-6">
-        <div className="flex items-center justify-between gap-4 mb-6">
+      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+        <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <h2 className="text-xl font-semibold">Recent Campaigns</h2>
-            <p className="text-sm text-slate-500 mt-1">
+            <p className="mt-1 text-sm text-slate-500">
               Last 50 customer notification campaigns.
             </p>
           </div>
 
           <button
             onClick={fetchData}
-            className="border px-4 py-2 rounded-xl text-sm hover:bg-slate-100"
+            className="rounded-xl border border-slate-200 px-4 py-2 text-sm hover:bg-slate-50"
           >
             Refresh
           </button>
         </div>
 
         {campaigns.length === 0 ? (
-          <div className="text-center text-slate-500 py-10">
+          <div className="py-10 text-center text-slate-500">
             No campaigns sent yet.
           </div>
         ) : (
@@ -747,20 +748,20 @@ export default function CustomerAnnouncementsPage() {
             {campaigns.map((campaign) => (
               <div
                 key={campaign.id}
-                className="border rounded-2xl p-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4"
+                className="flex flex-col gap-4 rounded-2xl border border-slate-200 p-4 lg:flex-row lg:items-center lg:justify-between"
               >
                 <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="px-3 py-1 rounded-full bg-blue-100 text-blue-700 text-xs capitalize">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full bg-blue-100 px-3 py-1 text-xs capitalize text-blue-700">
                       {formatLabel(campaign.type)}
                     </span>
 
-                    <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs capitalize">
+                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs capitalize text-slate-700">
                       {formatLabel(campaign.audience)}
                     </span>
 
                     <span
-                      className={`px-3 py-1 rounded-full text-xs capitalize ${
+                      className={`rounded-full px-3 py-1 text-xs capitalize ${
                         campaign.status === "sent"
                           ? "bg-green-100 text-green-700"
                           : campaign.status === "failed"
@@ -772,13 +773,13 @@ export default function CustomerAnnouncementsPage() {
                     </span>
                   </div>
 
-                  <h3 className="font-semibold mt-3">{campaign.title}</h3>
+                  <h3 className="mt-3 font-semibold">{campaign.title}</h3>
 
-                  <p className="text-sm text-slate-500 mt-1 line-clamp-2">
+                  <p className="mt-1 line-clamp-2 text-sm text-slate-500">
                     {campaign.message}
                   </p>
 
-                  <p className="text-xs text-slate-400 mt-2">
+                  <p className="mt-2 text-xs text-slate-400">
                     Created {new Date(campaign.created_at).toLocaleString()}
                   </p>
                 </div>
@@ -793,7 +794,7 @@ export default function CustomerAnnouncementsPage() {
                   </p>
 
                   {campaign.sent_at && (
-                    <p className="text-xs text-slate-400 mt-2">
+                    <p className="mt-2 text-xs text-slate-400">
                       Sent {new Date(campaign.sent_at).toLocaleString()}
                     </p>
                   )}
@@ -815,9 +816,9 @@ function StatCard({
   value: string | number;
 }) {
   return (
-    <div className="bg-white rounded-2xl shadow p-5">
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <p className="text-sm text-slate-500">{label}</p>
-      <h2 className="text-3xl font-bold mt-2">{value}</h2>
+      <h2 className="mt-2 text-3xl font-bold">{value}</h2>
     </div>
   );
 }
@@ -831,7 +832,7 @@ function Field({
 }) {
   return (
     <div>
-      <label className="block text-sm font-medium mb-2">{label}</label>
+      <label className="mb-2 block text-sm font-medium">{label}</label>
       {children}
     </div>
   );
@@ -845,9 +846,9 @@ function InfoCard({
   description: string;
 }) {
   return (
-    <div className="border rounded-2xl p-4 bg-slate-50">
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
       <p className="font-semibold">{title}</p>
-      <p className="text-sm text-slate-500 mt-1">{description}</p>
+      <p className="mt-1 text-sm text-slate-500">{description}</p>
     </div>
   );
 }

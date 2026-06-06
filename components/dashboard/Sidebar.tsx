@@ -1,77 +1,79 @@
+import Link from "next/link";
+
+const merchantLinks = [
+  { label: "Dashboard", href: "/dashboard" },
+  { label: "Products", href: "/products" },
+  { label: "Orders", href: "/orders" },
+  { label: "Analytics", href: "/analytics" },
+  { label: "Settings", href: "/settings" },
+  { label: "Storefront", href: "/settings/storefront" },
+  { label: "Categories", href: "/categories" },
+  { label: "Coupons", href: "/coupons" },
+  { label: "Shipping", href: "/shipping" },
+  { label: "Reviews", href: "/reviews" },
+  { label: "Wallet", href: "/wallet" },
+  { label: "Customers", href: "/customers" },
+  { label: "Customer Segments", href: "/customers/segments" },
+  { label: "Loyalty", href: "/loyalty" },
+  {
+    label: "Customer Announcements",
+    href: "/dashboard/marketing/announcement",
+  },
+  {
+    label: "Email Queue",
+    href: "/dashboard/marketing/email-queue",
+  },
+];
+
 export default function Sidebar() {
   return (
-    <aside className="w-64 bg-white border-r min-h-screen p-4">
-      <h2 className="text-2xl font-bold mb-8">StoreForge</h2>
+    <aside className="fixed inset-y-0 left-0 z-40 hidden w-72 border-r border-slate-200 bg-white lg:block">
+      <div className="flex h-full flex-col">
+        <div className="border-b border-slate-100 px-6 py-6">
+          <Link
+            href="/dashboard"
+            className="text-2xl font-bold tracking-tight text-slate-950"
+          >
+            StoreForge
+          </Link>
 
-      <nav className="space-y-4">
-        <a href="/products" className="block">
-          Products
-        </a>
+          <p className="mt-2 text-xs text-slate-500">
+            Merchant dashboard
+          </p>
+        </div>
 
-        <a href="/orders" className="block">
-          Orders
-        </a>
+        <nav className="flex-1 space-y-1 overflow-y-auto px-4 py-5">
+          {merchantLinks.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className="block rounded-2xl px-4 py-3 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-950"
+            >
+              {item.label}
+            </Link>
+          ))}
+        </nav>
 
-        <a href="/analytics" className="block">
-          Analytics
-        </a>
-
-        <a href="/settings" className="block">
-          Settings
-        </a>
-
-        <a href="/categories" className="block">
-          Categories
-        </a>
-
-        <a href="/coupons" className="block">
-          Coupons
-        </a>
-
-        <a href="/shipping" className="block">
-          Shipping
-        </a>
-
-        <a href="/reviews" className="block">
-          Reviews
-        </a>
-
-        <a href="/wallet" className="block">
-          Wallet
-        </a>
-
-        <a href="/admin/payouts" className="block">
-          Admin Payouts
-        </a>
-
-        <a href="/audit-logs" className="block">
-          Audit Logs
-        </a>
-
-        <a href="/customers" className="block">
-          Customers
-        </a>
-
-        <a href="/customers/segments" className="block">
-          Customer Segments
-        </a>
-
-        <a href="/loyalty" className="block">
-          Loyalty
-        </a>
-
-        <a href="/dashboard/marketing/announcement" className="block">
-          Customer Announcements
-        </a>
-
-        <a
-          href="/dashboard/marketing/email-queue"
-          className="block px-4 py-2 rounded-xl text-sm text-slate-600 hover:bg-slate-100 hover:text-black"
-        >
-          Email Queue
-        </a>
-
-      </nav>
+        <div className="border-t border-slate-100 px-6 py-5 text-xs text-slate-400">
+          Manage products, orders, customers, wallet, and storefront settings.
+        </div>
+      </div>
     </aside>
+  );
+}
+
+export function MobileDashboardNav() {
+  return (
+    <nav className="flex gap-2 overflow-x-auto border-t border-slate-100 bg-white px-4 py-3 lg:hidden">
+      {merchantLinks.slice(0, 10).map((item) => (
+        <Link
+          key={item.href}
+          href={item.href}
+          className="whitespace-nowrap rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600"
+        >
+          {item.label}
+        </Link>
+      ))}
+    </nav>
   );
 }

@@ -197,7 +197,7 @@ export default function AdminOverviewPage() {
             </Link>
 
             <Link
-              href="/admin/payout"
+              href="/admin/payouts"
               className="rounded-2xl border border-white/15 px-5 py-3 font-semibold text-white hover:bg-white/10"
             >
               Review payouts
@@ -306,7 +306,7 @@ export default function AdminOverviewPage() {
         <DashboardPanel
           title="Pending payouts"
           subtitle="Payout requests waiting for admin action."
-          actionHref="/admin/payout"
+          actionHref="/admin/payouts"
           actionLabel="Review"
         >
           {pendingPayouts.length === 0 ? (

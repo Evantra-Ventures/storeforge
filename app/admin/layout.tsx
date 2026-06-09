@@ -30,7 +30,7 @@ export default function AdminLayout({
           <nav className="flex-1 space-y-2 px-4 py-6 text-sm">
             <AdminLink href="/admin" label="Overview" />
             <AdminLink href="/admin/stores" label="Stores" />
-            <AdminLink href="/admin/payout" label="Payout approvals" />
+            <AdminLink href="/admin/payouts" label="Payout approvals" />
             <AdminLink href="/admin/orders" label="Orders" />
             <AdminLink href="/admin/audit-logs" label="Audit logs" />
             <AdminLink href="/admin/suspicious" label="Suspicious activity" />
@@ -67,7 +67,7 @@ export default function AdminLayout({
           <nav className="mt-4 flex gap-3 overflow-x-auto pb-1 text-sm">
             <MobileAdminLink href="/admin" label="Overview" />
             <MobileAdminLink href="/admin/stores" label="Stores" />
-            <MobileAdminLink href="/admin/payout" label="Payouts" />
+            <MobileAdminLink href="/admin/payouts" label="Payouts" />
             <MobileAdminLink href="/admin/orders" label="Orders" />
             <MobileAdminLink href="/admin/audit-logs" label="Logs" />
           </nav>

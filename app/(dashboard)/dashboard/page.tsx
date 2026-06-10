@@ -110,8 +110,37 @@ function getButtonClass(buttonStyle: string) {
   return "rounded-2xl";
 }
 
-export default async function DashboardOverviewPage() {
+export default async function DashboardOverviewPage({
+  searchParams,
+}: {
+  searchParams?: {
+    published?: string;
+    publish_error?: string;
+  };
+}) {
   const supabase = createClient();
+
+  async function publishStoreAction() {
+    "use server";
+
+    const supabase = createClient();
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      redirect("/login");
+    }
+
+    const { error } = await supabase.rpc("request_publish_my_store");
+
+    if (error) {
+      redirect(`/dashboard?publish_error=${encodeURIComponent(error.message)}`);
+    }
+
+    redirect("/dashboard?published=1");
+  }
 
   const {
     data: { user },
@@ -329,15 +358,12 @@ export default async function DashboardOverviewPage() {
 
   const hasStoreIdentity = Boolean(tenant.name && tenant.slug);
   const hasLogo = Boolean(tenant.logo_url);
-  const hasStorefrontDesign = Boolean(storefrontSettingsData);
   const hasHeroOrBanner = Boolean(
     storefrontSettings.hero_image_url || tenant.banner_url
   );
   const hasCategories = totalCategories > 0;
   const hasActiveProducts = activeProducts > 0;
   const hasProductImages = productsWithImages > 0;
-  const hasEmailSystem = Boolean(process.env.RESEND_API_KEY);
-  const hasOrders = totalOrders > 0;
 
   const launchChecklist = [
     {
@@ -353,14 +379,8 @@ export default async function DashboardOverviewPage() {
       href: "/settings/storefront",
     },
     {
-      title: "Storefront design",
-      description: "Customize colors, layout, buttons, and storefront content.",
-      completed: hasStorefrontDesign,
-      href: "/settings/storefront",
-    },
-    {
       title: "Hero or banner image",
-      description: "Add a strong visual banner for your storefront.",
+      description: "Add a strong visual banner or hero image for your store.",
       completed: hasHeroOrBanner,
       href: "/settings/storefront",
     },
@@ -382,18 +402,6 @@ export default async function DashboardOverviewPage() {
       completed: hasProductImages,
       href: "/products",
     },
-    {
-      title: "Email notifications",
-      description: "Email system is ready for receipts and customer updates.",
-      completed: hasEmailSystem,
-      href: "/dashboard/marketing/email-queue",
-    },
-    {
-      title: "First order",
-      description: "Receive your first customer order.",
-      completed: hasOrders,
-      href: "/orders",
-    },
   ];
 
   const completedLaunchItems = launchChecklist.filter(
@@ -407,7 +415,6 @@ export default async function DashboardOverviewPage() {
   const storeIsLaunchReady =
     hasStoreIdentity &&
     hasLogo &&
-    hasStorefrontDesign &&
     hasHeroOrBanner &&
     hasCategories &&
     hasActiveProducts &&
@@ -447,8 +454,9 @@ export default async function DashboardOverviewPage() {
 
       return {
         id: variant.id,
-        name: `${product?.name || "Product"} — ${variant.option_value || variant.name
-          }`,
+        name: `${product?.name || "Product"} — ${
+          variant.option_value || variant.name
+        }`,
         type: "Variant",
         inventory: Number(variant.inventory || 0),
         threshold: Number(variant.low_stock_threshold || 5),
@@ -461,6 +469,19 @@ export default async function DashboardOverviewPage() {
 
   return (
     <div className="space-y-6 sm:space-y-8">
+      {searchParams?.published === "1" && (
+        <div className="rounded-2xl border border-green-200 bg-green-50 p-4 text-green-700">
+          Store published successfully. Customers can now browse and buy from
+          your storefront.
+        </div>
+      )}
+
+      {searchParams?.publish_error && (
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700">
+          {decodeURIComponent(searchParams.publish_error)}
+        </div>
+      )}
+
       <section
         className="relative overflow-hidden rounded-[1.5rem] p-5 text-white shadow-sm sm:rounded-[2rem] sm:p-8"
         style={{
@@ -565,10 +586,26 @@ export default async function DashboardOverviewPage() {
             </h2>
 
             <div className="mt-5 space-y-3">
-              <FocusItem label="Pending orders" value={`${pendingOrders}`} href="/orders" />
-              <FocusItem label="Active deliveries" value={`${activeDeliveries}`} href="/orders" />
-              <FocusItem label="Pending emails" value={`${pendingEmails}`} href="/dashboard/marketing/email-queue" />
-              <FocusItem label="Low stock items" value={`${lowStockItems.length}`} href="/products" />
+              <FocusItem
+                label="Pending orders"
+                value={`${pendingOrders}`}
+                href="/orders"
+              />
+              <FocusItem
+                label="Active deliveries"
+                value={`${activeDeliveries}`}
+                href="/orders"
+              />
+              <FocusItem
+                label="Pending emails"
+                value={`${pendingEmails}`}
+                href="/dashboard/marketing/email-queue"
+              />
+              <FocusItem
+                label="Low stock items"
+                value={`${lowStockItems.length}`}
+                href="/products"
+              />
             </div>
           </div>
         </div>
@@ -583,19 +620,40 @@ export default async function DashboardOverviewPage() {
         tenantSlug={tenant.slug}
         storefrontSettings={storefrontSettings}
         storeStatus={tenant.status || "draft"}
+        publishStoreAction={publishStoreAction}
       />
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Revenue" value={money(currency, totalRevenue)} helper="Paid orders" />
+        <StatCard
+          label="Revenue"
+          value={money(currency, totalRevenue)}
+          helper="Paid orders"
+        />
         <StatCard label="Orders" value={totalOrders} helper="Total orders" />
-        <StatCard label="Customers" value={totalCustomers} helper="Customer profiles" />
-        <StatCard label="Products" value={totalProducts} helper="Listed products" />
+        <StatCard
+          label="Customers"
+          value={totalCustomers}
+          helper="Customer profiles"
+        />
+        <StatCard
+          label="Products"
+          value={totalProducts}
+          helper="Listed products"
+        />
       </section>
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MiniStat label="Pending orders" value={pendingOrders} tone="yellow" />
-        <MiniStat label="Active deliveries" value={activeDeliveries} tone="blue" />
-        <MiniStat label="Unread notifications" value={unreadNotifications} tone="green" />
+        <MiniStat
+          label="Active deliveries"
+          value={activeDeliveries}
+          tone="blue"
+        />
+        <MiniStat
+          label="Unread notifications"
+          value={unreadNotifications}
+          tone="green"
+        />
         <MiniStat label="Failed emails" value={failedEmails} tone="red" />
       </section>
 
@@ -716,7 +774,9 @@ export default async function DashboardOverviewPage() {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="font-semibold text-slate-950">{item.name}</p>
+                      <p className="font-semibold text-slate-950">
+                        {item.name}
+                      </p>
                       <p className="mt-1 text-xs text-slate-500">
                         {item.type} · Threshold {item.threshold}
                       </p>
@@ -847,7 +907,10 @@ export default async function DashboardOverviewPage() {
           ) : (
             <div className="space-y-3">
               {pendingEmailItems.map((item: any) => (
-                <div key={item.id} className="rounded-2xl border border-slate-100 p-4">
+                <div
+                  key={item.id}
+                  className="rounded-2xl border border-slate-100 p-4"
+                >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="truncate font-semibold">{item.subject}</p>
@@ -895,10 +958,26 @@ export default async function DashboardOverviewPage() {
           </div>
 
           <div className="space-y-3">
-            <QuickAction title="Add or edit products" text="Catalog, pricing, stock, variants, and images." href="/products" />
-            <QuickAction title="Review orders" text="Delivery status, refunds, and customer updates." href="/orders" />
-            <QuickAction title="Send announcements" text="Coupon campaigns and customer notifications." href="/dashboard/marketing/announcement" />
-            <QuickAction title="Check analytics" text="Sales, customers, and store activity." href="/analytics" />
+            <QuickAction
+              title="Add or edit products"
+              text="Catalog, pricing, stock, variants, and images."
+              href="/products"
+            />
+            <QuickAction
+              title="Review orders"
+              text="Delivery status, refunds, and customer updates."
+              href="/orders"
+            />
+            <QuickAction
+              title="Send announcements"
+              text="Coupon campaigns and customer notifications."
+              href="/dashboard/marketing/announcement"
+            />
+            <QuickAction
+              title="Check analytics"
+              text="Sales, customers, and store activity."
+              href="/analytics"
+            />
           </div>
         </div>
       </section>
@@ -1007,6 +1086,7 @@ function LaunchChecklistCard({
   tenantSlug,
   storefrontSettings,
   storeStatus,
+  publishStoreAction,
 }: {
   checklist: {
     title: string;
@@ -1021,15 +1101,25 @@ function LaunchChecklistCard({
   tenantSlug: string;
   storefrontSettings: StorefrontSettings;
   storeStatus: string;
+  publishStoreAction: () => Promise<void>;
 }) {
   const nextItem = checklist.find((item) => !item.completed);
+  const isPublished = storeStatus === "active";
 
   return (
     <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-      {storeStatus !== "active" && (
+      {!isPublished && (
         <div className="mb-6 rounded-2xl border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800">
-          Your store is currently <strong className="capitalize">{storeStatus}</strong>.
-          Customers can only shop after the store is activated by the platform admin.
+          Your store is currently{" "}
+          <strong className="capitalize">{storeStatus}</strong>. Complete the
+          launch checklist, then publish your store so customers can browse and
+          buy.
+        </div>
+      )}
+
+      {isPublished && (
+        <div className="mb-6 rounded-2xl border border-green-200 bg-green-50 p-4 text-sm text-green-800">
+          Your store is published and open to customers.
         </div>
       )}
 
@@ -1046,13 +1136,13 @@ function LaunchChecklistCard({
 
           <h2 className="mt-2 text-2xl font-bold text-slate-950">
             {storeIsLaunchReady
-              ? "Your store is ready to share"
+              ? "Your store is ready to publish"
               : "Get your store launch-ready"}
           </h2>
 
           <p className="mt-2 text-sm leading-6 text-slate-500">
-            Complete these steps before inviting customers to shop from your
-            storefront.
+            Complete only the required setup steps below. Your first order and
+            email system are not required before publishing.
           </p>
 
           <div className="mt-6">
@@ -1087,7 +1177,23 @@ function LaunchChecklistCard({
               Preview store
             </a>
 
-            {nextItem && (
+            {storeIsLaunchReady && !isPublished && (
+              <form action={publishStoreAction}>
+                <button
+                  type="submit"
+                  className={`${getButtonClass(
+                    storefrontSettings.button_style
+                  )} w-full px-5 py-3 text-center text-sm font-semibold text-white hover:opacity-90 sm:w-auto`}
+                  style={{
+                    backgroundColor: storefrontSettings.accent_color,
+                  }}
+                >
+                  Publish store
+                </button>
+              </form>
+            )}
+
+            {!storeIsLaunchReady && nextItem && (
               <a
                 href={nextItem.href}
                 className={`${getButtonClass(
@@ -1130,30 +1236,34 @@ function LaunchChecklistItem({
   return (
     <a
       href={href}
-      className={`flex flex-col gap-4 rounded-2xl border p-4 transition hover:-translate-y-1 hover:shadow-md md:flex-row md:items-center md:justify-between ${completed
+      className={`flex flex-col gap-4 rounded-2xl border p-4 transition hover:-translate-y-1 hover:shadow-md md:flex-row md:items-center md:justify-between ${
+        completed
           ? "border-green-200 bg-green-50"
           : "border-slate-200 bg-slate-50"
-        }`}
+      }`}
     >
       <div className="flex items-start gap-4">
         <div
-          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold ${completed ? "bg-green-600 text-white" : "bg-white text-slate-400"
-            }`}
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
+            completed ? "bg-green-600 text-white" : "bg-white text-slate-400"
+          }`}
         >
           {completed ? "✓" : "!"}
         </div>
 
         <div>
           <h3
-            className={`font-bold ${completed ? "text-green-900" : "text-slate-950"
-              }`}
+            className={`font-bold ${
+              completed ? "text-green-900" : "text-slate-950"
+            }`}
           >
             {title}
           </h3>
 
           <p
-            className={`mt-1 text-sm leading-6 ${completed ? "text-green-700" : "text-slate-500"
-              }`}
+            className={`mt-1 text-sm leading-6 ${
+              completed ? "text-green-700" : "text-slate-500"
+            }`}
           >
             {description}
           </p>
@@ -1161,10 +1271,11 @@ function LaunchChecklistItem({
       </div>
 
       <span
-        className={`w-fit rounded-full px-3 py-1 text-xs font-semibold ${completed
+        className={`w-fit rounded-full px-3 py-1 text-xs font-semibold ${
+          completed
             ? "bg-green-100 text-green-700"
             : "bg-yellow-100 text-yellow-700"
-          }`}
+        }`}
       >
         {completed ? "Complete" : "Needs setup"}
       </span>

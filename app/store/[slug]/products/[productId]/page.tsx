@@ -1,8 +1,7 @@
 import CustomerNotificationBell from "@/components/customer/CustomerNotificationBell";
 import { createClient } from "@/lib/supabase/server";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import ReviewForm from "@/components/store/ReviewForm";
-import ProductPurchaseBox from "@/components/store/ProductPurchaseBox";
 
 type ProductPageProps = {
   params: {
@@ -399,6 +398,150 @@ export default async function ProductPage({ params }: ProductPageProps) {
     initialWishlisted = !!wishlistItem;
   }
 
+  async function addToCartAction(formData: FormData) {
+    "use server";
+
+    const supabase = createClient();
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    const productRedirect = `/store/${params.slug}/products/${params.productId}`;
+    const cartRedirect = `/store/${params.slug}/cart`;
+
+    if (!user) {
+      redirect(`/login?redirect=${encodeURIComponent(productRedirect)}`);
+    }
+
+    const quantityValue = Number(formData.get("quantity") || 1);
+    const variantValue = String(formData.get("variant_id") || "");
+
+    const quantity =
+      Number.isFinite(quantityValue) && quantityValue > 0
+        ? Math.min(Math.floor(quantityValue), 99)
+        : 1;
+
+    const variantId = variantValue && variantValue !== "base" ? variantValue : null;
+
+    const { data: tenantData } = await supabase
+      .from("tenants")
+      .select("id,slug,status")
+      .eq("slug", params.slug)
+      .single();
+
+    if (!tenantData) {
+      redirect(productRedirect);
+    }
+
+    const resolvedStoreStatus = getStoreVisibilityStatus(tenantData);
+
+    if (!isStorePublic(resolvedStoreStatus)) {
+      redirect(productRedirect);
+    }
+
+    const { data: productData } = await supabase
+      .from("products")
+      .select("id,tenant_id,inventory,status")
+      .eq("id", params.productId)
+      .eq("tenant_id", tenantData.id)
+      .eq("status", "active")
+      .single();
+
+    if (!productData) {
+      redirect(productRedirect);
+    }
+
+    let availableInventory = Number(productData.inventory || 0);
+
+    if (variantId) {
+      const { data: variantData } = await supabase
+        .from("product_variants")
+        .select("id,inventory,status")
+        .eq("id", variantId)
+        .eq("tenant_id", tenantData.id)
+        .eq("product_id", productData.id)
+        .eq("status", "active")
+        .single();
+
+      if (!variantData) {
+        redirect(productRedirect);
+      }
+
+      availableInventory = Number(variantData.inventory || 0);
+    }
+
+    if (availableInventory <= 0 || quantity > availableInventory) {
+      redirect(productRedirect);
+    }
+
+    const { data: existingCart } = await supabase
+      .from("carts")
+      .select("id")
+      .eq("tenant_id", tenantData.id)
+      .eq("user_id", user.id)
+      .eq("status", "active")
+      .maybeSingle();
+
+    let cartId = existingCart?.id;
+
+    if (!cartId) {
+      const { data: newCart, error: cartError } = await supabase
+        .from("carts")
+        .insert({
+          tenant_id: tenantData.id,
+          user_id: user.id,
+          status: "active",
+        })
+        .select("id")
+        .single();
+
+      if (cartError || !newCart) {
+        redirect(productRedirect);
+      }
+
+      cartId = newCart.id;
+    }
+
+    let existingItemQuery = supabase
+      .from("cart_items")
+      .select("id,quantity")
+      .eq("cart_id", cartId)
+      .eq("product_id", productData.id);
+
+    if (variantId) {
+      existingItemQuery = existingItemQuery.eq("variant_id", variantId);
+    } else {
+      existingItemQuery = existingItemQuery.is("variant_id", null);
+    }
+
+    const { data: existingItem } = await existingItemQuery.maybeSingle();
+
+    if (existingItem) {
+      const nextQuantity = Math.min(
+        Number(existingItem.quantity || 0) + quantity,
+        availableInventory
+      );
+
+      await supabase
+        .from("cart_items")
+        .update({
+          quantity: nextQuantity,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", existingItem.id);
+    } else {
+      await supabase.from("cart_items").insert({
+        cart_id: cartId,
+        product_id: productData.id,
+        variant_id: variantId,
+        quantity,
+      });
+    }
+
+    redirect(cartRedirect);
+  }
+
   return (
     <div
       className="min-h-screen"
@@ -433,7 +576,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
       <StoreHeader tenant={tenant} settings={settings} />
 
       {(tenant.banner_url || settings.hero_image_url) && (
-        <section className="mx-auto max-w-7xl px-6 pt-8">
+        <section className="mx-auto max-w-7xl px-4 pt-8 sm:px-6">
           <div
             className="relative h-48 overflow-hidden rounded-[2rem] border border-slate-200"
             style={{
@@ -445,12 +588,14 @@ export default async function ProductPage({ params }: ProductPageProps) {
               alt={`${tenant.name} banner`}
               className="h-full w-full object-cover opacity-70"
             />
+
             <div
               className="absolute inset-0"
               style={{
                 background: `linear-gradient(to right, ${settings.primary_color}dd, transparent)`,
               }}
             />
+
             <div className="absolute bottom-6 left-6 text-white">
               <p className="text-sm text-white/75">Shopping at</p>
               <h1 className="text-2xl font-bold">{tenant.name}</h1>
@@ -459,7 +604,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
         </section>
       )}
 
-      <main className="mx-auto max-w-7xl px-6 py-10">
+      <main className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
         <a
           href={`/store/${tenant.slug}`}
           className={`${getButtonClass(
@@ -594,14 +739,17 @@ export default async function ProductPage({ params }: ProductPageProps) {
 
               <div className="mt-6">
                 {product.status === "active" ? (
-                  <ProductPurchaseBox
-                    tenantId={tenant.id}
-                    productId={product.id}
-                    basePrice={Number(product.price)}
-                    baseInventory={baseInventory}
-                    currency={currency}
+                  <ProductPurchaseForm
+                    action={addToCartAction}
+                    product={product}
                     variants={variants || []}
+                    baseInventory={baseInventory}
+                    effectiveInventory={effectiveInventory}
+                    isOutOfStock={isOutOfStock}
+                    currency={currency}
+                    settings={settings}
                     initialWishlisted={initialWishlisted}
+                    tenantSlug={tenant.slug}
                   />
                 ) : (
                   <div className="rounded-3xl border border-orange-200 bg-orange-50 p-5 text-sm text-orange-800">
@@ -950,6 +1098,121 @@ export default async function ProductPage({ params }: ProductPageProps) {
   );
 }
 
+function ProductPurchaseForm({
+  action,
+  product,
+  variants,
+  baseInventory,
+  effectiveInventory,
+  isOutOfStock,
+  currency,
+  settings,
+  initialWishlisted,
+  tenantSlug,
+}: {
+  action: (formData: FormData) => Promise<void>;
+  product: any;
+  variants: any[];
+  baseInventory: number;
+  effectiveInventory: number;
+  isOutOfStock: boolean;
+  currency: string;
+  settings: StorefrontSettings;
+  initialWishlisted: boolean;
+  tenantSlug: string;
+}) {
+  return (
+    <form
+      action={action}
+      className="rounded-3xl border border-slate-200 bg-slate-50 p-5"
+    >
+      <div className="space-y-5">
+        {variants.length > 0 ? (
+          <label className="block">
+            <span className="mb-2 block text-sm font-medium text-slate-700">
+              Select option
+            </span>
+
+            <select
+              name="variant_id"
+              required
+              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 outline-none focus:border-slate-950"
+            >
+              {variants.map((variant: any) => {
+                const variantPrice =
+                  Number(product.price || 0) +
+                  Number(variant.price_adjustment || 0);
+
+                return (
+                  <option
+                    key={variant.id}
+                    value={variant.id}
+                    disabled={Number(variant.inventory || 0) <= 0}
+                  >
+                    {variant.option_name}: {variant.option_value} ·{" "}
+                    {formatMoney(currency, variantPrice)} ·{" "}
+                    {Number(variant.inventory || 0)} left
+                  </option>
+                );
+              })}
+            </select>
+          </label>
+        ) : (
+          <input type="hidden" name="variant_id" value="base" />
+        )}
+
+        <label className="block">
+          <span className="mb-2 block text-sm font-medium text-slate-700">
+            Quantity
+          </span>
+
+          <input
+            type="number"
+            name="quantity"
+            min={1}
+            max={Math.max(1, variants.length > 0 ? effectiveInventory : baseInventory)}
+            defaultValue={1}
+            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 outline-none focus:border-slate-950"
+          />
+        </label>
+
+        <button
+          type="submit"
+          disabled={isOutOfStock}
+          className={`${getButtonClass(
+            settings.button_style
+          )} w-full px-6 py-4 font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50`}
+          style={{
+            backgroundColor: settings.accent_color,
+          }}
+        >
+          {isOutOfStock ? "Out of stock" : "Add to cart"}
+        </button>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <a
+            href={`/store/${tenantSlug}/cart`}
+            className={`${getButtonClass(
+              settings.button_style
+            )} border border-slate-200 bg-white px-5 py-3 text-center text-sm font-semibold text-slate-700 hover:bg-slate-50`}
+          >
+            View cart
+          </a>
+
+          <a
+            href="/wishlist"
+            className={`${getButtonClass(
+              settings.button_style
+            )} border border-slate-200 bg-white px-5 py-3 text-center text-sm font-semibold text-slate-700 hover:bg-slate-50`}
+          >
+            {initialWishlisted ? "In wishlist" : "Wishlist"}
+          </a>
+        </div>
+      </div>
+    </form>
+  );
+}
+
 function StoreUnavailable({
   tenant,
   status,
@@ -1027,7 +1290,7 @@ function StoreHeader({
 }) {
   return (
     <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur">
-      <div className="mx-auto flex max-w-7xl flex-col gap-5 px-6 py-5 lg:flex-row lg:items-center lg:justify-between">
+      <div className="mx-auto flex max-w-7xl flex-col gap-5 px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
         <a href={`/store/${tenant.slug}`} className="flex items-center gap-4">
           {tenant.logo_url ? (
             <img
@@ -1052,45 +1315,45 @@ function StoreHeader({
           </div>
         </a>
 
-        <div className="flex flex-wrap items-center gap-4">
+        <div className="flex gap-3 overflow-x-auto pb-1 lg:flex-wrap lg:items-center lg:justify-end lg:overflow-visible lg:pb-0">
           <a
             href={`/store/${tenant.slug}`}
-            className="text-sm text-slate-500 hover:text-slate-950"
+            className="whitespace-nowrap text-sm text-slate-500 hover:text-slate-950"
           >
             Store
           </a>
 
           <a
             href={`/customer/profile?store=${tenant.slug}`}
-            className="text-sm text-slate-500 hover:text-slate-950"
+            className="whitespace-nowrap text-sm text-slate-500 hover:text-slate-950"
           >
             My Profile
           </a>
 
           <a
             href="/my-orders"
-            className="text-sm text-slate-500 hover:text-slate-950"
+            className="whitespace-nowrap text-sm text-slate-500 hover:text-slate-950"
           >
             My Orders
           </a>
 
           <a
             href="/wishlist"
-            className="text-sm text-slate-500 hover:text-slate-950"
+            className="whitespace-nowrap text-sm text-slate-500 hover:text-slate-950"
           >
             Wishlist
           </a>
 
           <a
             href={`/customer/loyalty?store=${tenant.slug}`}
-            className="text-sm text-slate-500 hover:text-slate-950"
+            className="whitespace-nowrap text-sm text-slate-500 hover:text-slate-950"
           >
             My Rewards
           </a>
 
           <a
             href={`/customer/notifications?store=${tenant.slug}`}
-            className="text-sm text-slate-500 hover:text-slate-950"
+            className="whitespace-nowrap text-sm text-slate-500 hover:text-slate-950"
           >
             Notifications
           </a>
@@ -1101,7 +1364,7 @@ function StoreHeader({
             href={`/store/${tenant.slug}/cart`}
             className={`${getButtonClass(
               settings.button_style
-            )} px-4 py-2 text-sm font-medium text-white`}
+            )} whitespace-nowrap px-4 py-2 text-sm font-medium text-white`}
             style={{
               backgroundColor: settings.primary_color,
             }}

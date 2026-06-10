@@ -279,9 +279,9 @@ export default async function ProductPage({ params }: ProductPageProps) {
   const averageRating =
     reviews && reviews.length > 0
       ? reviews.reduce(
-          (acc: number, review: any) => acc + Number(review.rating),
-          0
-        ) / reviews.length
+        (acc: number, review: any) => acc + Number(review.rating),
+        0
+      ) / reviews.length
       : 0;
 
   let relatedQuery = supabase
@@ -331,11 +331,11 @@ export default async function ProductPage({ params }: ProductPageProps) {
   const lowestVariantPrice =
     variants && variants.length > 0
       ? Math.min(
-          ...variants.map(
-            (variant: any) =>
-              Number(product.price) + Number(variant.price_adjustment || 0)
-          )
+        ...variants.map(
+          (variant: any) =>
+            Number(product.price) + Number(variant.price_adjustment || 0)
         )
+      )
       : Number(product.price);
 
   const productJsonLd = {
@@ -366,21 +366,21 @@ export default async function ProductPage({ params }: ProductPageProps) {
     },
     ...(reviews && reviews.length > 0
       ? {
-          aggregateRating: {
-            "@type": "AggregateRating",
-            ratingValue: averageRating.toFixed(1),
-            reviewCount: reviews.length,
+        aggregateRating: {
+          "@type": "AggregateRating",
+          ratingValue: averageRating.toFixed(1),
+          reviewCount: reviews.length,
+        },
+        review: reviews.slice(0, 5).map((review: any) => ({
+          "@type": "Review",
+          reviewRating: {
+            "@type": "Rating",
+            ratingValue: review.rating,
           },
-          review: reviews.slice(0, 5).map((review: any) => ({
-            "@type": "Review",
-            reviewRating: {
-              "@type": "Rating",
-              ratingValue: review.rating,
-            },
-            name: review.title || "Product review",
-            reviewBody: review.comment || "",
-          })),
-        }
+          name: review.title || "Product review",
+          reviewBody: review.comment || "",
+        })),
+      }
       : {}),
   };
 
@@ -527,7 +527,6 @@ export default async function ProductPage({ params }: ProductPageProps) {
         .from("cart_items")
         .update({
           quantity: nextQuantity,
-          updated_at: new Date().toISOString(),
         })
         .eq("id", existingItem.id);
     } else {
@@ -1226,15 +1225,15 @@ function StoreUnavailable({
     status === "paused"
       ? "This store is temporarily paused"
       : status === "suspended"
-      ? "This store is currently unavailable"
-      : "This store is not live yet";
+        ? "This store is currently unavailable"
+        : "This store is not live yet";
 
   const message =
     status === "paused"
       ? "The merchant has temporarily paused this storefront. Please check back later."
       : status === "suspended"
-      ? "This storefront cannot be accessed at the moment."
-      : "The merchant is still preparing this storefront. Please check back soon.";
+        ? "This storefront cannot be accessed at the moment."
+        : "The merchant is still preparing this storefront. Please check back soon.";
 
   return (
     <main className="min-h-screen bg-slate-950 px-6 py-16 text-white">

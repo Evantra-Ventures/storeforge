@@ -352,7 +352,6 @@ export default function CartPage() {
         .from("cart_items")
         .update({
           quantity,
-          updated_at: new Date().toISOString(),
         })
         .eq("id", itemId);
 
@@ -622,9 +621,8 @@ export default function CartPage() {
                           </p>
 
                           <p
-                            className={`mt-1 text-xs ${
-                              isOutOfStock ? "text-red-600" : "text-slate-400"
-                            }`}
+                            className={`mt-1 text-xs ${isOutOfStock ? "text-red-600" : "text-slate-400"
+                              }`}
                           >
                             {isOutOfStock
                               ? "Out of stock"
@@ -791,15 +789,15 @@ function StoreUnavailable({
     status === "paused"
       ? "This store is temporarily paused"
       : status === "suspended"
-      ? "This store is currently unavailable"
-      : "This store is not live yet";
+        ? "This store is currently unavailable"
+        : "This store is not live yet";
 
   const message =
     status === "paused"
       ? "The merchant has temporarily paused this storefront. Please check back later."
       : status === "suspended"
-      ? "This storefront cannot be accessed at the moment."
-      : "The merchant is still preparing this storefront. Please check back soon.";
+        ? "This storefront cannot be accessed at the moment."
+        : "The merchant is still preparing this storefront. Please check back soon.";
 
   return (
     <main className="min-h-screen bg-slate-950 px-6 py-16 text-white">

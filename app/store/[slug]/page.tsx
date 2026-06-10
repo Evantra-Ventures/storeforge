@@ -320,7 +320,7 @@ export default async function StorePage({
         />
 
         {settings.show_coupon_banner && settings.promotional_banner_url && (
-          <section className="mx-auto max-w-7xl px-6 pt-8">
+          <section className="mx-auto max-w-7xl px-4 pt-8 sm:px-6">
             <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white p-3 shadow-sm">
               <img
                 src={settings.promotional_banner_url}
@@ -332,7 +332,7 @@ export default async function StorePage({
         )}
 
         {settings.show_search && (
-          <section className="mx-auto max-w-7xl px-6 py-8">
+          <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
             <form
               action={`/store/${tenant.slug}`}
               className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm"
@@ -375,7 +375,7 @@ export default async function StorePage({
         )}
 
         {settings.show_categories && settings.category_style !== "hidden" && (
-          <section className="mx-auto max-w-7xl px-6 pb-8">
+          <section className="mx-auto max-w-7xl px-4 pb-8 sm:px-6">
             <div
               className={
                 settings.category_style === "cards"
@@ -405,7 +405,7 @@ export default async function StorePage({
         )}
 
         {settings.show_trust_cards && (
-          <section className="mx-auto max-w-7xl px-6 pb-10">
+          <section className="mx-auto max-w-7xl px-4 pb-10 sm:px-6">
             <div className="grid grid-cols-1 gap-5 md:grid-cols-4">
               <TrustCard
                 title="Secure checkout"
@@ -432,7 +432,7 @@ export default async function StorePage({
         )}
 
         {settings.show_loyalty_banner && (
-          <section className="mx-auto max-w-7xl px-6 pb-10">
+          <section className="mx-auto max-w-7xl px-4 pb-10 sm:px-6">
             <div
               className="rounded-[2rem] p-6 text-white shadow-sm"
               style={{
@@ -467,7 +467,7 @@ export default async function StorePage({
           </section>
         )}
 
-        <section id="products" className="mx-auto max-w-7xl px-6 pb-20">
+        <section id="products" className="mx-auto max-w-7xl px-4 pb-20 sm:px-6">
           <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
             <div>
               <p
@@ -491,7 +491,7 @@ export default async function StorePage({
               </p>
             </div>
 
-            <span className="rounded-full bg-white px-4 py-2 text-sm font-medium text-slate-600 shadow-sm">
+            <span className="w-fit rounded-full bg-white px-4 py-2 text-sm font-medium text-slate-600 shadow-sm">
               {products?.length || 0} product(s)
             </span>
           </div>
@@ -620,6 +620,12 @@ function HeroSection({
   const isMinimal = settings.hero_layout === "minimal";
   const isBanner = settings.hero_layout === "banner";
 
+  const showDesktopFeaturedPreview =
+    !isCentered &&
+    !isMinimal &&
+    !isBanner &&
+    settings.show_featured_products;
+
   return (
     <section
       className={`relative overflow-hidden text-white ${
@@ -636,60 +642,85 @@ function HeroSection({
         }}
       />
 
-      {(isBanner || heroImage) && heroImage && (
+      {heroImage && (
         <img
           src={heroImage}
-          alt={`${tenant.name} hero`}
-          className={`absolute inset-0 h-full w-full object-cover ${
-            isBanner ? "opacity-35" : "opacity-20"
-          }`}
+          alt=""
+          aria-hidden="true"
+          className="absolute inset-0 hidden h-full w-full object-cover object-center opacity-15 md:block xl:opacity-20"
         />
       )}
 
       <div
-        className={`relative mx-auto grid max-w-7xl grid-cols-1 gap-12 px-6 py-16 lg:py-24 ${
+        className={`relative mx-auto grid max-w-7xl grid-cols-1 gap-8 px-4 py-8 sm:px-6 sm:py-12 lg:py-20 ${
           isCentered || isMinimal
             ? "place-items-center"
-            : "lg:grid-cols-2 lg:items-center"
+            : showDesktopFeaturedPreview
+            ? "xl:grid-cols-2 xl:items-center"
+            : "lg:grid-cols-1"
         }`}
       >
-        <div className={isCentered || isMinimal ? "max-w-4xl" : ""}>
-          <div className="mb-6 inline-flex rounded-full border border-white/10 bg-white/10 px-4 py-2 text-sm text-slate-200">
+        {heroImage && (
+          <div className="md:hidden">
+            <div className="overflow-hidden rounded-[2rem] border border-white/10 bg-white/10 p-2 shadow-2xl">
+              <img
+                src={heroImage}
+                alt={`${tenant.name} hero banner`}
+                className="aspect-[16/9] w-full rounded-[1.5rem] object-cover object-center"
+              />
+            </div>
+          </div>
+        )}
+
+        <div
+          className={
+            isCentered || isMinimal
+              ? "mx-auto max-w-4xl"
+              : showDesktopFeaturedPreview
+              ? ""
+              : "max-w-4xl"
+          }
+        >
+          <div className="mb-5 inline-flex rounded-full border border-white/10 bg-white/10 px-4 py-2 text-xs text-slate-200 backdrop-blur sm:text-sm">
             {settings.hero_badge || "Live store · Powered by StoreForge"}
           </div>
 
           <div
-            className={`flex items-center gap-4 ${
-              isCentered || isMinimal ? "justify-center" : ""
+            className={`flex flex-col gap-4 sm:flex-row sm:items-center ${
+              isCentered || isMinimal ? "sm:justify-center" : ""
             }`}
           >
             {tenant.logo_url ? (
               <img
                 src={tenant.logo_url}
                 alt={tenant.name}
-                className="h-16 w-16 rounded-2xl border border-white/20 object-cover"
+                className="h-14 w-14 rounded-2xl border border-white/20 object-cover sm:h-16 sm:w-16"
               />
             ) : (
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white text-2xl font-bold text-slate-950">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-2xl font-bold text-slate-950 sm:h-16 sm:w-16">
                 {tenant.name?.slice(0, 1) || "S"}
               </div>
             )}
 
             <div>
               <p className="text-sm text-slate-300">Welcome to</p>
-              <h1 className="text-4xl font-bold tracking-tight md:text-6xl">
+              <h1 className="break-words text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl">
                 {heroHeading}
               </h1>
             </div>
           </div>
 
-          <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-300">
+          <p
+            className={`mt-6 max-w-2xl text-base leading-8 text-slate-200 sm:text-lg ${
+              isCentered || isMinimal ? "mx-auto" : ""
+            }`}
+          >
             {heroSubheading}
           </p>
 
           <div
-            className={`mt-10 flex flex-col gap-4 sm:flex-row ${
-              isCentered || isMinimal ? "justify-center" : ""
+            className={`mt-8 grid grid-cols-1 gap-3 sm:flex sm:flex-wrap ${
+              isCentered || isMinimal ? "sm:justify-center" : ""
             }`}
           >
             <a
@@ -717,27 +748,34 @@ function HeroSection({
           {!isMinimal && (
             <div className="mt-10 grid grid-cols-3 gap-4 border-t border-white/10 pt-8">
               <HeroStat label="Products" value={String(totalProducts)} />
-              <HeroStat
-                label="Categories"
-                value={String(totalCategories)}
-              />
+              <HeroStat label="Categories" value={String(totalCategories)} />
               <HeroStat label="Checkout" value="Secure" />
             </div>
           )}
         </div>
 
-        {!isCentered &&
-          !isMinimal &&
-          settings.show_featured_products &&
-          settings.hero_layout !== "banner" && (
+        {showDesktopFeaturedPreview && (
+          <div className="hidden xl:block">
             <FeaturedPreview
               tenant={tenant}
               settings={settings}
               featuredProducts={featuredProducts}
               currency={currency}
             />
-          )}
+          </div>
+        )}
       </div>
+
+      {settings.show_featured_products && featuredProducts.length > 0 && (
+        <div className="relative mx-auto max-w-7xl px-4 pb-8 sm:px-6 xl:hidden">
+          <FeaturedPreview
+            tenant={tenant}
+            settings={settings}
+            featuredProducts={featuredProducts}
+            currency={currency}
+          />
+        </div>
+      )}
     </section>
   );
 }
@@ -754,8 +792,8 @@ function FeaturedPreview({
   currency: string;
 }) {
   return (
-    <div className="rounded-[2rem] border border-white/10 bg-white/10 p-4 shadow-2xl backdrop-blur">
-      <div className="rounded-[1.5rem] bg-white p-5 text-slate-950">
+    <div className="rounded-[2rem] border border-white/10 bg-white/10 p-3 shadow-2xl backdrop-blur sm:p-4">
+      <div className="rounded-[1.5rem] bg-white p-4 text-slate-950 sm:p-5">
         <div className="flex items-center justify-between border-b border-slate-100 pb-4">
           <div>
             <p className="text-sm text-slate-500">Featured products</p>
@@ -779,7 +817,7 @@ function FeaturedPreview({
             "Explore featured products from this store."}
         </p>
 
-        <div className="mt-5 grid grid-cols-2 gap-4">
+        <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
           {featuredProducts.length > 0 ? (
             featuredProducts.map((product: any) => {
               const lowestPrice = getLowestPrice(product);
@@ -815,7 +853,7 @@ function FeaturedPreview({
               );
             })
           ) : (
-            <div className="col-span-2 rounded-2xl bg-slate-50 p-8 text-center text-sm text-slate-500">
+            <div className="rounded-2xl bg-slate-50 p-8 text-center text-sm text-slate-500 sm:col-span-2">
               Products will appear here once the merchant adds items.
             </div>
           )}
@@ -834,7 +872,7 @@ function StoreHeader({
 }) {
   return (
     <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur">
-      <div className="mx-auto flex max-w-7xl flex-col gap-5 px-6 py-5 lg:flex-row lg:items-center lg:justify-between">
+      <div className="mx-auto flex max-w-7xl flex-col gap-5 px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
         <a href={`/store/${tenant.slug}`} className="flex items-center gap-4">
           {tenant.logo_url ? (
             <img
@@ -861,38 +899,38 @@ function StoreHeader({
           </div>
         </a>
 
-        <div className="flex flex-wrap items-center gap-4">
+        <div className="flex gap-3 overflow-x-auto pb-1 lg:flex-wrap lg:items-center lg:justify-end lg:overflow-visible lg:pb-0">
           <a
             href={`/customer/profile?store=${tenant.slug}`}
-            className="text-sm text-slate-500 hover:text-slate-950"
+            className="whitespace-nowrap text-sm text-slate-500 hover:text-slate-950"
           >
             My Profile
           </a>
 
           <a
             href="/my-orders"
-            className="text-sm text-slate-500 hover:text-slate-950"
+            className="whitespace-nowrap text-sm text-slate-500 hover:text-slate-950"
           >
             My Orders
           </a>
 
           <a
             href="/wishlist"
-            className="text-sm text-slate-500 hover:text-slate-950"
+            className="whitespace-nowrap text-sm text-slate-500 hover:text-slate-950"
           >
             Wishlist
           </a>
 
           <a
             href={`/customer/loyalty?store=${tenant.slug}`}
-            className="text-sm text-slate-500 hover:text-slate-950"
+            className="whitespace-nowrap text-sm text-slate-500 hover:text-slate-950"
           >
             My Rewards
           </a>
 
           <a
             href={`/customer/notifications?store=${tenant.slug}`}
-            className="text-sm text-slate-500 hover:text-slate-950"
+            className="whitespace-nowrap text-sm text-slate-500 hover:text-slate-950"
           >
             Notifications
           </a>
@@ -903,7 +941,7 @@ function StoreHeader({
             href={`/store/${tenant.slug}/cart`}
             className={`${getButtonClass(
               settings.button_style
-            )} px-4 py-2 text-sm font-medium text-white`}
+            )} whitespace-nowrap px-4 py-2 text-sm font-medium text-white`}
             style={{
               backgroundColor: settings.primary_color,
             }}

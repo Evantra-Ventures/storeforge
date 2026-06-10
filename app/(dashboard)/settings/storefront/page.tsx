@@ -49,6 +49,14 @@ type Tenant = {
   banner_url: string | null;
 };
 
+type UpdatedTenant = {
+  id: string;
+  name: string;
+  slug: string;
+  logo_url: string | null;
+  banner_url: string | null;
+};
+
 const themePresets = [
   {
     value: "modern_dark",
@@ -172,11 +180,14 @@ export default function StorefrontSettingsPage() {
     };
   }, [settings]);
 
-  const fetchSettings = async () => {
+  const fetchSettings = async (preserveMessages = false) => {
     try {
       setLoading(true);
-      setErrorMessage("");
-      setSuccessMessage("");
+
+      if (!preserveMessages) {
+        setErrorMessage("");
+        setSuccessMessage("");
+      }
 
       const {
         data: { user },
@@ -198,7 +209,13 @@ export default function StorefrontSettingsPage() {
         return;
       }
 
-      const allowedRoles = ["owner", "store_owner", "admin", "super_admin"];
+      const allowedRoles = [
+        "owner",
+        "store_owner",
+        "admin",
+        "super_admin",
+        "platform_admin",
+      ];
 
       if (!allowedRoles.includes(profile.role)) {
         setErrorMessage("You do not have permission to edit storefront design.");
@@ -218,9 +235,17 @@ export default function StorefrontSettingsPage() {
 
       setTenant(tenantData);
 
-      await supabase.rpc("ensure_storefront_settings", {
-        p_tenant_id: tenantData.id,
-      });
+      const { error: ensureError } = await supabase.rpc(
+        "ensure_storefront_settings",
+        {
+          p_tenant_id: tenantData.id,
+        }
+      );
+
+      if (ensureError) {
+        setErrorMessage(ensureError.message);
+        return;
+      }
 
       const { data: settingsData, error: settingsError } = await supabase
         .from("storefront_settings")
@@ -429,21 +454,32 @@ export default function StorefrontSettingsPage() {
       }
 
       if (folder === "logo") {
-        const { error } = await supabase
-          .from("tenants")
-          .update({
-            logo_url: publicUrl,
-          })
-          .eq("id", tenant.id);
+        const { data: updatedTenant, error } = await supabase.rpc(
+          "update_my_store_media",
+          {
+            p_logo_url: publicUrl,
+            p_banner_url: null,
+          }
+        );
 
         if (error) {
           setErrorMessage(error.message);
           return;
         }
 
+        if (!updatedTenant) {
+          setErrorMessage("Logo uploaded, but store record was not updated.");
+          return;
+        }
+
+        const tenantResult = updatedTenant as UpdatedTenant;
+
         setTenant({
-          ...tenant,
-          logo_url: publicUrl,
+          id: tenantResult.id,
+          name: tenantResult.name,
+          slug: tenantResult.slug,
+          logo_url: tenantResult.logo_url,
+          banner_url: tenantResult.banner_url,
         });
 
         setSuccessMessage("Store logo uploaded successfully.");
@@ -451,21 +487,32 @@ export default function StorefrontSettingsPage() {
       }
 
       if (folder === "banner") {
-        const { error } = await supabase
-          .from("tenants")
-          .update({
-            banner_url: publicUrl,
-          })
-          .eq("id", tenant.id);
+        const { data: updatedTenant, error } = await supabase.rpc(
+          "update_my_store_media",
+          {
+            p_logo_url: null,
+            p_banner_url: publicUrl,
+          }
+        );
 
         if (error) {
           setErrorMessage(error.message);
           return;
         }
 
+        if (!updatedTenant) {
+          setErrorMessage("Banner uploaded, but store record was not updated.");
+          return;
+        }
+
+        const tenantResult = updatedTenant as UpdatedTenant;
+
         setTenant({
-          ...tenant,
-          banner_url: publicUrl,
+          id: tenantResult.id,
+          name: tenantResult.name,
+          slug: tenantResult.slug,
+          logo_url: tenantResult.logo_url,
+          banner_url: tenantResult.banner_url,
         });
 
         setSuccessMessage("Store banner uploaded successfully.");
@@ -556,7 +603,7 @@ export default function StorefrontSettingsPage() {
       }
 
       setSuccessMessage("Storefront design settings saved successfully.");
-      fetchSettings();
+      await fetchSettings(true);
     } catch (error) {
       console.error(error);
       setErrorMessage("Failed to save storefront settings.");
@@ -990,30 +1037,30 @@ function StorefrontPreview({
           backgroundColor: previewTheme.primary,
         }}
       >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-3">
             {tenant.logo_url ? (
               <img
                 src={tenant.logo_url}
                 alt={tenant.name}
-                className="h-10 w-10 rounded-xl object-cover"
+                className="h-10 w-10 shrink-0 rounded-xl object-cover"
               />
             ) : (
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-sm font-bold text-slate-950">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-sm font-bold text-slate-950">
                 {tenant.name.slice(0, 1)}
               </div>
             )}
 
-            <div>
-              <p className="text-sm font-semibold">{tenant.name}</p>
-              <p className="text-xs text-white/70">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold">{tenant.name}</p>
+              <p className="truncate text-xs text-white/70">
                 {settings.theme_preset.replaceAll("_", " ")}
               </p>
             </div>
           </div>
 
           <div
-            className="rounded-full px-3 py-1 text-xs font-semibold"
+            className="shrink-0 rounded-full px-3 py-1 text-xs font-semibold"
             style={{ backgroundColor: previewTheme.accent }}
           >
             Live

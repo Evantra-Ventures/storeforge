@@ -290,7 +290,7 @@ export default function Home() {
 
               <div className="mt-8 flex flex-col gap-4 sm:flex-row">
                 <Link
-                  href="/store/tech-world"
+                  href="https://storeforge-e2gi.vercel.app/store/tech-world"
                   className="rounded-2xl bg-slate-950 px-6 py-4 text-center font-semibold text-white transition hover:bg-slate-800"
                 >
                   Visit Tech World

@@ -12,6 +12,16 @@ function isStorePublic(status: string) {
   return status === "active" || status === "published";
 }
 
+function normalizeCurrency(value?: string | null) {
+  const normalized = (value || "").trim().toUpperCase();
+
+  if (!/^[A-Z]{3}$/.test(normalized)) {
+    return "";
+  }
+
+  return normalized;
+}
+
 export async function POST(request: Request) {
   try {
     const supabase = createClient();
@@ -23,7 +33,18 @@ export async function POST(request: Request) {
       );
     }
 
-    const { orderId } = await request.json();
+    let body: { orderId?: string };
+
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json(
+        { error: "Invalid payment request body." },
+        { status: 400 }
+      );
+    }
+
+    const orderId = body.orderId;
 
     if (!orderId) {
       return NextResponse.json(
@@ -34,9 +55,10 @@ export async function POST(request: Request) {
 
     const {
       data: { user },
+      error: userError,
     } = await supabase.auth.getUser();
 
-    if (!user) {
+    if (userError || !user) {
       return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
     }
 
@@ -47,7 +69,14 @@ export async function POST(request: Request) {
       .eq("customer_id", user.id)
       .maybeSingle();
 
-    if (orderError || !order) {
+    if (orderError) {
+      return NextResponse.json(
+        { error: orderError.message || "Failed to load order." },
+        { status: 400 }
+      );
+    }
+
+    if (!order) {
       return NextResponse.json({ error: "Order not found." }, { status: 404 });
     }
 
@@ -57,7 +86,14 @@ export async function POST(request: Request) {
       .eq("id", order.tenant_id)
       .maybeSingle();
 
-    if (tenantError || !tenant) {
+    if (tenantError) {
+      return NextResponse.json(
+        { error: tenantError.message || "Failed to load store." },
+        { status: 400 }
+      );
+    }
+
+    if (!tenant) {
       return NextResponse.json({ error: "Store not found." }, { status: 404 });
     }
 
@@ -84,9 +120,15 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!["pending", "awaiting_payment"].includes(order.status)) {
+    const allowedOrderStatuses = ["pending", "awaiting_payment"];
+
+    if (!allowedOrderStatuses.includes(order.status || "pending")) {
       return NextResponse.json(
-        { error: "This order is not eligible for payment." },
+        {
+          error: `This order is not eligible for payment. Current status: ${
+            order.status || "unknown"
+          }.`,
+        },
         { status: 400 }
       );
     }
@@ -100,9 +142,31 @@ export async function POST(request: Request) {
       );
     }
 
+    const orderCurrency = normalizeCurrency(order.currency);
+
+    if (!orderCurrency) {
+      return NextResponse.json(
+        {
+          error:
+            "Order currency is missing or invalid. Please recreate the order from checkout.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const customerEmail = order.customer_email || user.email;
+
+    if (!customerEmail) {
+      return NextResponse.json(
+        { error: "Customer email is required for payment." },
+        { status: 400 }
+      );
+    }
+
     const amountInSubunit = Math.round(totalAmount * 100);
 
-    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+    const baseUrl =
+      process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
     const reference =
       order.checkout_session_id ||
@@ -112,14 +176,17 @@ export async function POST(request: Request) {
       .from("orders")
       .update({
         checkout_session_id: reference,
-        updated_at: new Date().toISOString(),
       })
       .eq("id", order.id)
       .eq("customer_id", user.id);
 
     if (updateReferenceError) {
       return NextResponse.json(
-        { error: "Failed to prepare payment session." },
+        {
+          error:
+            updateReferenceError.message ||
+            "Failed to prepare payment session.",
+        },
         { status: 400 }
       );
     }
@@ -137,9 +204,9 @@ export async function POST(request: Request) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          email: order.customer_email || user.email,
+          email: customerEmail,
           amount: amountInSubunit,
-          currency: order.currency || tenant.currency || "GHS",
+          currency: orderCurrency,
           reference,
           callback_url: callbackUrl,
           metadata: {
@@ -147,6 +214,7 @@ export async function POST(request: Request) {
             tenant_id: order.tenant_id,
             store_slug: tenant.slug,
             customer_id: user.id,
+            currency: orderCurrency,
             subtotal_amount: order.subtotal_amount,
             discount_amount: order.discount_amount,
             shipping_fee: order.shipping_fee,
@@ -164,7 +232,12 @@ export async function POST(request: Request) {
     if (!response.ok || !paystackData.status) {
       return NextResponse.json(
         {
-          error: paystackData.message || "Failed to initialize payment.",
+          error:
+            paystackData.message ||
+            paystackData.error ||
+            "Failed to initialize payment.",
+          paystack_status: response.status,
+          currency: orderCurrency,
         },
         { status: 400 }
       );
@@ -173,22 +246,33 @@ export async function POST(request: Request) {
     const paystackReference = paystackData.data?.reference || reference;
 
     if (paystackReference !== reference) {
-      await supabase
+      const { error: finalReferenceError } = await supabase
         .from("orders")
         .update({
           checkout_session_id: paystackReference,
-          updated_at: new Date().toISOString(),
         })
         .eq("id", order.id)
         .eq("customer_id", user.id);
+
+      if (finalReferenceError) {
+        return NextResponse.json(
+          {
+            error:
+              finalReferenceError.message ||
+              "Payment was initialized, but order reference could not be saved.",
+          },
+          { status: 400 }
+        );
+      }
     }
 
     return NextResponse.json({
       authorizationUrl: paystackData.data.authorization_url,
       reference: paystackReference,
+      currency: orderCurrency,
     });
   } catch (error) {
-    console.error(error);
+    console.error("Payment initialization failed:", error);
 
     return NextResponse.json(
       { error: "Payment initialization failed." },

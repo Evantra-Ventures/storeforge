@@ -193,6 +193,16 @@ function isStorePublic(status: string) {
   return status === "active" || status === "published";
 }
 
+function normalizeCurrency(value?: string | null) {
+  const normalized = (value || "GHS").trim().toUpperCase();
+
+  if (!/^[A-Z]{3}$/.test(normalized)) {
+    return "GHS";
+  }
+
+  return normalized;
+}
+
 export default function StoreCheckoutPage() {
   const supabase = createClient();
   const params = useParams();
@@ -252,7 +262,7 @@ export default function StoreCheckoutPage() {
   const [paying, setPaying] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
-  const currency = tenant?.currency || "GHS";
+  const currency = normalizeCurrency(tenant?.currency);
 
   const money = (amount: number) =>
     `${currency} ${Number(amount || 0).toFixed(2)}`;
@@ -372,7 +382,11 @@ export default function StoreCheckoutPage() {
       const resolvedTenant = tenantData as Tenant;
       const resolvedStoreStatus = getStoreVisibilityStatus(resolvedTenant);
 
-      setTenant(resolvedTenant);
+      setTenant({
+        ...resolvedTenant,
+        currency: normalizeCurrency(resolvedTenant.currency),
+      });
+
       setStoreStatus(resolvedStoreStatus);
 
       const { data: profile } = await supabase
@@ -736,6 +750,13 @@ export default function StoreCheckoutPage() {
       }
     }
 
+    if (total <= 0) {
+      setErrorMessage(
+        "This order total is 0 after discounts. Online payment cannot be initialized for a zero amount."
+      );
+      return false;
+    }
+
     return true;
   };
 
@@ -816,6 +837,7 @@ export default function StoreCheckoutPage() {
         return;
       }
 
+      const orderCurrency = normalizeCurrency(tenant.currency);
       const savedAddressId = await saveCheckoutAddressIfNeeded();
 
       if (customerProfile) {
@@ -831,7 +853,10 @@ export default function StoreCheckoutPage() {
           .eq("user_id", user.id);
       }
 
-      const preLoyaltyTotal = subtotal + shippingFee;
+      const finalSubtotal = Number(subtotal.toFixed(2));
+      const finalShippingFee = Number(shippingFee.toFixed(2));
+      const finalDiscountAmount = Number(loyaltyDiscount.toFixed(2));
+      const finalTotalAmount = Number(total.toFixed(2));
 
       const { data: order, error: orderError } = await supabase
         .from("orders")
@@ -840,9 +865,10 @@ export default function StoreCheckoutPage() {
           customer_id: user.id,
           customer_email: email,
           customer_name: fullName || "Customer",
+          currency: orderCurrency,
 
-          subtotal_amount: Number(subtotal.toFixed(2)),
-          discount_amount: 0,
+          subtotal_amount: finalSubtotal,
+          discount_amount: finalDiscountAmount,
 
           delivery_method: deliveryMethod,
           shipping_zone_id:
@@ -865,9 +891,9 @@ export default function StoreCheckoutPage() {
           shipping_postal_code:
             deliveryMethod === "delivery" ? postalCode || null : null,
           shipping_note: shippingNote || null,
-          shipping_fee: Number(shippingFee.toFixed(2)),
+          shipping_fee: finalShippingFee,
 
-          total_amount: Number(preLoyaltyTotal.toFixed(2)),
+          total_amount: finalTotalAmount,
           status: "pending",
           payment_status: "pending",
         })

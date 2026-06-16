@@ -16,6 +16,11 @@ type Tenant = {
   status?: string | null;
   store_status?: string | null;
   is_published?: boolean | null;
+
+  paystack_subaccount_code?: string | null;
+  payout_setup_status?: string | null;
+  platform_commission_percentage?: number | null;
+  payment_fee_bearer?: "merchant" | "platform" | null;
 };
 
 type Product = {
@@ -203,6 +208,13 @@ function normalizeCurrency(value?: string | null) {
   return normalized;
 }
 
+function isSettlementActive(tenant: Tenant | null) {
+  return Boolean(
+    tenant?.paystack_subaccount_code &&
+      tenant?.payout_setup_status === "active"
+  );
+}
+
 export default function StoreCheckoutPage() {
   const supabase = createClient();
   const params = useParams();
@@ -263,6 +275,11 @@ export default function StoreCheckoutPage() {
   const [errorMessage, setErrorMessage] = useState("");
 
   const currency = normalizeCurrency(tenant?.currency);
+  const settlementIsActive = isSettlementActive(tenant);
+  const platformCommission = Number(
+    tenant?.platform_commission_percentage || 5
+  );
+  const paymentFeeBearer = tenant?.payment_fee_bearer || "merchant";
 
   const money = (amount: number) =>
     `${currency} ${Number(amount || 0).toFixed(2)}`;
@@ -338,6 +355,12 @@ export default function StoreCheckoutPage() {
 
   const total = Math.max(0, subtotal + shippingFee - loyaltyDiscount);
 
+  const estimatedPlatformFee = Number(
+    (total * (platformCommission / 100)).toFixed(2)
+  );
+
+  const estimatedMerchantGross = Math.max(0, total - estimatedPlatformFee);
+
   const fillFromAddress = (address: CustomerAddress) => {
     setSelectedAddressId(address.id);
     setFullName(address.full_name || customerProfile?.full_name || "");
@@ -370,7 +393,13 @@ export default function StoreCheckoutPage() {
 
       const { data: tenantData, error: tenantError } = await supabase
         .from("tenants")
-        .select("*")
+        .select(`
+          *,
+          paystack_subaccount_code,
+          payout_setup_status,
+          platform_commission_percentage,
+          payment_fee_bearer
+        `)
         .eq("slug", slug)
         .single();
 
@@ -628,6 +657,13 @@ export default function StoreCheckoutPage() {
       return false;
     }
 
+    if (!settlementIsActive) {
+      setErrorMessage(
+        "This store has not completed payment settlement setup yet. Please contact the merchant or try again later."
+      );
+      return false;
+    }
+
     if (cartItems.length === 0) {
       setErrorMessage("Your cart is empty.");
       return false;
@@ -837,6 +873,13 @@ export default function StoreCheckoutPage() {
         return;
       }
 
+      if (!isSettlementActive(tenant)) {
+        setErrorMessage(
+          "This store has not completed payment settlement setup yet. Please contact the merchant or try again later."
+        );
+        return;
+      }
+
       const orderCurrency = normalizeCurrency(tenant.currency);
       const savedAddressId = await saveCheckoutAddressIfNeeded();
 
@@ -857,6 +900,12 @@ export default function StoreCheckoutPage() {
       const finalShippingFee = Number(shippingFee.toFixed(2));
       const finalDiscountAmount = Number(loyaltyDiscount.toFixed(2));
       const finalTotalAmount = Number(total.toFixed(2));
+      const finalPlatformFee = Number(
+        (finalTotalAmount * (platformCommission / 100)).toFixed(2)
+      );
+      const finalMerchantGross = Number(
+        Math.max(0, finalTotalAmount - finalPlatformFee).toFixed(2)
+      );
 
       const { data: order, error: orderError } = await supabase
         .from("orders")
@@ -896,6 +945,15 @@ export default function StoreCheckoutPage() {
           total_amount: finalTotalAmount,
           status: "pending",
           payment_status: "pending",
+
+          platform_commission_percentage: platformCommission,
+          platform_fee_amount: finalPlatformFee,
+          merchant_gross_amount: finalMerchantGross,
+          merchant_net_estimate: finalMerchantGross,
+          payment_fee_bearer: paymentFeeBearer,
+          paystack_subaccount_code: tenant.paystack_subaccount_code || null,
+          paystack_split_applied: Boolean(tenant.paystack_subaccount_code),
+          settlement_status: "pending",
         })
         .select("*")
         .single();
@@ -1082,11 +1140,30 @@ export default function StoreCheckoutPage() {
           </div>
         )}
 
+        {!settlementIsActive && (
+          <div className="mb-6 rounded-2xl border border-yellow-200 bg-yellow-50 p-4 text-yellow-800">
+            <p className="font-semibold">Online payment is not ready yet.</p>
+            <p className="mt-1 text-sm leading-6">
+              This merchant has not completed Paystack settlement setup. Please
+              contact the merchant or try again later.
+            </p>
+
+            {canManageStore && (
+              <a
+                href="/settings/payout"
+                className="mt-3 inline-block rounded-xl bg-yellow-600 px-4 py-2 text-sm font-semibold text-white hover:bg-yellow-700"
+              >
+                Complete settlement setup
+              </a>
+            )}
+          </div>
+        )}
+
         <div className="mb-8 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <StepPill number="1" title="Information" active />
             <StepPill number="2" title="Shipping" active />
-            <StepPill number="3" title="Payment" />
+            <StepPill number="3" title="Payment" active={settlementIsActive} />
           </div>
         </div>
 
@@ -1383,7 +1460,12 @@ export default function StoreCheckoutPage() {
             handlePayNow={handlePayNow}
             paying={paying}
             storeIsPublic={isStorePublic(storeStatus)}
+            settlementIsActive={settlementIsActive}
             tenantSlug={tenant.slug}
+            platformCommission={platformCommission}
+            estimatedPlatformFee={estimatedPlatformFee}
+            estimatedMerchantGross={estimatedMerchantGross}
+            paymentFeeBearer={paymentFeeBearer}
           />
         </div>
       </main>
@@ -1691,7 +1773,12 @@ function OrderSummary({
   handlePayNow,
   paying,
   storeIsPublic,
+  settlementIsActive,
   tenantSlug,
+  platformCommission,
+  estimatedPlatformFee,
+  estimatedMerchantGross,
+  paymentFeeBearer,
 }: {
   cartItems: CartItem[];
   money: (amount: number) => string;
@@ -1713,7 +1800,12 @@ function OrderSummary({
   handlePayNow: () => void;
   paying: boolean;
   storeIsPublic: boolean;
+  settlementIsActive: boolean;
   tenantSlug: string;
+  platformCommission: number;
+  estimatedPlatformFee: number;
+  estimatedMerchantGross: number;
+  paymentFeeBearer: "merchant" | "platform";
 }) {
   return (
     <aside className="h-fit rounded-3xl border border-slate-200 bg-white p-6 shadow-sm lg:sticky lg:top-28">
@@ -1725,8 +1817,14 @@ function OrderSummary({
           </p>
         </div>
 
-        <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700">
-          Secure
+        <span
+          className={`rounded-full px-3 py-1 text-xs font-semibold ${
+            settlementIsActive
+              ? "bg-green-100 text-green-700"
+              : "bg-yellow-100 text-yellow-700"
+          }`}
+        >
+          {settlementIsActive ? "Secure" : "Payment pending"}
         </span>
       </div>
 
@@ -1886,12 +1984,41 @@ function OrderSummary({
         </div>
       </div>
 
+      {settlementIsActive && (
+        <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-500">
+          <p className="font-semibold text-slate-700">Payment settlement</p>
+          <div className="mt-3 space-y-2">
+            <SummaryRow
+              label={`StoreForge fee ${platformCommission}%`}
+              value={money(estimatedPlatformFee)}
+            />
+            <SummaryRow
+              label="Merchant gross estimate"
+              value={money(estimatedMerchantGross)}
+            />
+            <p className="pt-2 leading-5">
+              Paystack processing fees are borne by the{" "}
+              {paymentFeeBearer === "merchant" ? "merchant" : "platform"}.
+            </p>
+          </div>
+        </div>
+      )}
+
       <button
         onClick={handlePayNow}
-        disabled={paying || cartItems.length === 0 || !storeIsPublic}
-        className="mt-6 w-full rounded-2xl bg-blue-600 py-4 font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+        disabled={
+          paying ||
+          cartItems.length === 0 ||
+          !storeIsPublic ||
+          !settlementIsActive
+        }
+        className="mt-6 w-full rounded-2xl bg-blue-600 py-4 font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {paying ? "Redirecting to payment..." : "Proceed to payment →"}
+        {paying
+          ? "Redirecting to payment..."
+          : !settlementIsActive
+          ? "Payment not available yet"
+          : "Proceed to payment →"}
       </button>
 
       <p className="mt-4 text-center text-xs text-slate-500">

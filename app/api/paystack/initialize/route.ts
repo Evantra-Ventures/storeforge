@@ -22,6 +22,17 @@ function normalizeCurrency(value?: string | null) {
   return normalized;
 }
 
+function cleanText(value?: string | null) {
+  return (value || "").trim();
+}
+
+function getPaystackErrorMessage(data: any) {
+  if (!data) return "Failed to initialize payment.";
+  if (typeof data.message === "string") return data.message;
+  if (typeof data.error === "string") return data.error;
+  return "Failed to initialize payment.";
+}
+
 export async function POST(request: Request) {
   try {
     const supabase = createClient();
@@ -82,7 +93,19 @@ export async function POST(request: Request) {
 
     const { data: tenant, error: tenantError } = await supabase
       .from("tenants")
-      .select("*")
+      .select(`
+        id,
+        name,
+        slug,
+        status,
+        store_status,
+        is_published,
+        currency,
+        paystack_subaccount_code,
+        payout_setup_status,
+        payment_fee_bearer,
+        platform_commission_percentage
+      `)
       .eq("id", order.tenant_id)
       .maybeSingle();
 
@@ -163,10 +186,85 @@ export async function POST(request: Request) {
       );
     }
 
+    const subaccountCode = cleanText(tenant.paystack_subaccount_code);
+
+    if (!subaccountCode || tenant.payout_setup_status !== "active") {
+      return NextResponse.json(
+        {
+          error:
+            "This store has not completed Paystack settlement setup. The merchant must activate settlement before accepting online payments.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const { data: split, error: splitError } = await supabase.rpc(
+      "snapshot_order_payment_split",
+      {
+        p_order_id: order.id,
+      }
+    );
+
+    if (splitError || !split) {
+      return NextResponse.json(
+        {
+          error:
+            splitError?.message ||
+            "Failed to prepare payment split for this order.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const splitCurrency = normalizeCurrency(split.currency || orderCurrency);
+
+    if (!splitCurrency) {
+      return NextResponse.json(
+        {
+          error:
+            "Payment split currency is missing or invalid. Please recreate the order from checkout.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const splitSubaccountCode = cleanText(
+      split.paystack_subaccount_code || subaccountCode
+    );
+
+    if (!splitSubaccountCode) {
+      return NextResponse.json(
+        {
+          error:
+            "Paystack subaccount is missing from this payment split. Please activate settlement setup again.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const platformFeeAmount = Number(split.platform_fee_amount || 0);
+    const platformFeeInSubunit = Math.round(platformFeeAmount * 100);
     const amountInSubunit = Math.round(totalAmount * 100);
 
-    const baseUrl =
-      process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+    if (
+      !Number.isFinite(platformFeeInSubunit) ||
+      platformFeeInSubunit < 0 ||
+      platformFeeInSubunit >= amountInSubunit
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Invalid platform fee for this order. Please check your settlement settings.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const feeBearer =
+      split.payment_fee_bearer === "platform" ? "account" : "subaccount";
+
+    const requestUrl = new URL(request.url);
+    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || requestUrl.origin;
 
     const reference =
       order.checkout_session_id ||
@@ -176,6 +274,7 @@ export async function POST(request: Request) {
       .from("orders")
       .update({
         checkout_session_id: reference,
+        paystack_transaction_reference: reference,
       })
       .eq("id", order.id)
       .eq("customer_id", user.id);
@@ -195,6 +294,49 @@ export async function POST(request: Request) {
       reference
     )}&orderId=${encodeURIComponent(order.id)}`;
 
+    const paystackPayload: Record<string, any> = {
+      email: customerEmail,
+      amount: amountInSubunit,
+      currency: splitCurrency,
+      reference,
+      callback_url: callbackUrl,
+
+      subaccount: splitSubaccountCode,
+      transaction_charge: platformFeeInSubunit,
+      bearer: feeBearer,
+
+      metadata: {
+        order_id: order.id,
+        tenant_id: order.tenant_id,
+        store_slug: tenant.slug,
+        customer_id: user.id,
+
+        currency: splitCurrency,
+
+        subtotal_amount: order.subtotal_amount,
+        discount_amount: order.discount_amount,
+        shipping_fee: order.shipping_fee,
+        total_amount: order.total_amount,
+
+        platform_commission_percentage:
+          split.platform_commission_percentage,
+        platform_fee_amount: split.platform_fee_amount,
+        merchant_gross_amount: split.merchant_gross_amount,
+        merchant_net_estimate: split.merchant_net_estimate,
+        payment_fee_bearer: split.payment_fee_bearer,
+
+        paystack_subaccount_code: splitSubaccountCode,
+        paystack_fee_bearer: feeBearer,
+
+        delivery_method: order.delivery_method,
+        coupon_id: order.coupon_id,
+        coupon_code: order.coupon_code,
+
+        platform: "StoreForge",
+        payment_model: "paystack_split",
+      },
+    };
+
     const response = await fetch(
       "https://api.paystack.co/transaction/initialize",
       {
@@ -203,27 +345,7 @@ export async function POST(request: Request) {
           Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          email: customerEmail,
-          amount: amountInSubunit,
-          currency: orderCurrency,
-          reference,
-          callback_url: callbackUrl,
-          metadata: {
-            order_id: order.id,
-            tenant_id: order.tenant_id,
-            store_slug: tenant.slug,
-            customer_id: user.id,
-            currency: orderCurrency,
-            subtotal_amount: order.subtotal_amount,
-            discount_amount: order.discount_amount,
-            shipping_fee: order.shipping_fee,
-            total_amount: order.total_amount,
-            delivery_method: order.delivery_method,
-            coupon_id: order.coupon_id,
-            coupon_code: order.coupon_code,
-          },
-        }),
+        body: JSON.stringify(paystackPayload),
       }
     );
 
@@ -232,24 +354,27 @@ export async function POST(request: Request) {
     if (!response.ok || !paystackData.status) {
       return NextResponse.json(
         {
-          error:
-            paystackData.message ||
-            paystackData.error ||
-            "Failed to initialize payment.",
+          error: getPaystackErrorMessage(paystackData),
           paystack_status: response.status,
-          currency: orderCurrency,
+          currency: splitCurrency,
+          split_applied: true,
+          subaccount: splitSubaccountCode,
         },
         { status: 400 }
       );
     }
 
     const paystackReference = paystackData.data?.reference || reference;
+    const paystackTransactionId =
+      paystackData.data?.id?.toString?.() || null;
 
-    if (paystackReference !== reference) {
+    if (paystackReference !== reference || paystackTransactionId) {
       const { error: finalReferenceError } = await supabase
         .from("orders")
         .update({
           checkout_session_id: paystackReference,
+          paystack_transaction_reference: paystackReference,
+          paystack_transaction_id: paystackTransactionId,
         })
         .eq("id", order.id)
         .eq("customer_id", user.id);
@@ -266,10 +391,23 @@ export async function POST(request: Request) {
       }
     }
 
+    await supabase
+      .from("payment_splits")
+      .update({
+        paystack_transaction_reference: paystackReference,
+        paystack_transaction_id: paystackTransactionId,
+        status: "initialized",
+      })
+      .eq("order_id", order.id);
+
     return NextResponse.json({
       authorizationUrl: paystackData.data.authorization_url,
       reference: paystackReference,
-      currency: orderCurrency,
+      currency: splitCurrency,
+      splitApplied: true,
+      subaccount: splitSubaccountCode,
+      platformFeeAmount: split.platform_fee_amount,
+      paymentFeeBearer: split.payment_fee_bearer,
     });
   } catch (error) {
     console.error("Payment initialization failed:", error);

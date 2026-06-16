@@ -3,6 +3,131 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { processPaidOrder } from "@/lib/payments/processPaidOrder";
 
+function safeCompareSignature(expected: string, received: string) {
+  const expectedBuffer = Buffer.from(expected, "hex");
+  const receivedBuffer = Buffer.from(received, "hex");
+
+  if (expectedBuffer.length !== receivedBuffer.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(expectedBuffer, receivedBuffer);
+}
+
+function getEventReference(event: any) {
+  return (
+    event?.data?.reference ||
+    event?.data?.metadata?.reference ||
+    event?.data?.metadata?.order_reference ||
+    null
+  );
+}
+
+function getEventTransactionId(event: any) {
+  const id = event?.data?.id;
+  return id === undefined || id === null ? null : String(id);
+}
+
+function getEventAmount(event: any) {
+  return Number(event?.data?.amount || 0) / 100;
+}
+
+function getEventProcessorFee(event: any) {
+  return event?.data?.fees ? Number(event.data.fees) / 100 : 0;
+}
+
+function normalizeCurrency(value?: string | null) {
+  const normalized = (value || "").trim().toUpperCase();
+  return /^[A-Z]{3}$/.test(normalized) ? normalized : "";
+}
+
+async function markOrderFailed({
+  supabase,
+  order,
+  reference,
+  transactionId,
+  reason,
+}: {
+  supabase: ReturnType<typeof createClient>;
+  order: any;
+  reference: string;
+  transactionId: string | null;
+  reason: string;
+}) {
+  if (order.payment_status !== "paid") {
+    await supabase
+      .from("orders")
+      .update({
+        payment_status: "failed",
+        status: "cancelled",
+        settlement_status: "failed",
+        paystack_transaction_reference: reference,
+        paystack_transaction_id: transactionId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", order.id)
+      .neq("payment_status", "paid");
+  }
+
+  await supabase
+    .from("payment_splits")
+    .update({
+      status: "failed",
+      paystack_transaction_reference: reference,
+      paystack_transaction_id: transactionId,
+      metadata: {
+        source: "paystack_webhook",
+        reason,
+        failed_at: new Date().toISOString(),
+      },
+      updated_at: new Date().toISOString(),
+    })
+    .eq("order_id", order.id);
+}
+
+async function markOrderManualReview({
+  supabase,
+  order,
+  reference,
+  transactionId,
+  reason,
+  metadata,
+}: {
+  supabase: ReturnType<typeof createClient>;
+  order: any;
+  reference: string;
+  transactionId: string | null;
+  reason: string;
+  metadata?: Record<string, any>;
+}) {
+  await supabase
+    .from("orders")
+    .update({
+      settlement_status: "manual_review",
+      paystack_transaction_reference: reference,
+      paystack_transaction_id: transactionId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", order.id)
+    .neq("payment_status", "paid");
+
+  await supabase
+    .from("payment_splits")
+    .update({
+      status: "manual_review",
+      paystack_transaction_reference: reference,
+      paystack_transaction_id: transactionId,
+      metadata: {
+        source: "paystack_webhook",
+        reason,
+        reviewed_at: new Date().toISOString(),
+        ...(metadata || {}),
+      },
+      updated_at: new Date().toISOString(),
+    })
+    .eq("order_id", order.id);
+}
+
 export async function POST(request: Request) {
   try {
     if (!process.env.PAYSTACK_SECRET_KEY) {
@@ -22,12 +147,12 @@ export async function POST(request: Request) {
       );
     }
 
-    const hash = crypto
+    const expectedSignature = crypto
       .createHmac("sha512", process.env.PAYSTACK_SECRET_KEY)
       .update(rawBody)
       .digest("hex");
 
-    if (hash !== signature) {
+    if (!safeCompareSignature(expectedSignature, signature)) {
       return NextResponse.json(
         { error: "Invalid Paystack signature." },
         { status: 401 }
@@ -36,33 +161,39 @@ export async function POST(request: Request) {
 
     const supabase = createClient();
     const event = JSON.parse(rawBody);
-    const reference = event?.data?.reference;
+
+    const reference = getEventReference(event);
+    const transactionId = getEventTransactionId(event);
 
     if (!reference) {
       return NextResponse.json({ received: true });
     }
 
-    const { data: order } = await supabase
+    const { data: order, error: orderError } = await supabase
       .from("orders")
       .select("*")
-      .eq("checkout_session_id", reference)
+      .or(
+        `checkout_session_id.eq.${reference},paystack_transaction_reference.eq.${reference}`
+      )
       .maybeSingle();
+
+    if (orderError) {
+      console.error("Webhook order lookup error:", orderError);
+      return NextResponse.json({ received: true });
+    }
 
     if (!order) {
       return NextResponse.json({ received: true });
     }
 
     if (event.event === "charge.failed" || event.event === "charge.abandoned") {
-      if (order.payment_status !== "paid") {
-        await supabase
-          .from("orders")
-          .update({
-            payment_status: "failed",
-            status: "cancelled",
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", order.id);
-      }
+      await markOrderFailed({
+        supabase,
+        order,
+        reference,
+        transactionId,
+        reason: event.event,
+      });
 
       return NextResponse.json({ received: true });
     }
@@ -71,7 +202,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ received: true });
     }
 
-    const paidAmount = Number(event?.data?.amount || 0) / 100;
+    if (order.payment_status === "paid") {
+      return NextResponse.json({
+        received: true,
+        processed: true,
+        alreadyPaid: true,
+      });
+    }
+
+    const paidAmount = getEventAmount(event);
     const orderAmount = Number(order.total_amount || 0);
 
     if (Number(paidAmount.toFixed(2)) !== Number(orderAmount.toFixed(2))) {
@@ -81,32 +220,95 @@ export async function POST(request: Request) {
         received: paidAmount,
       });
 
-      await supabase
-        .from("orders")
-        .update({
-          payment_status: "payment_review",
-          status: "payment_review",
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", order.id)
-        .neq("payment_status", "paid");
+      await markOrderManualReview({
+        supabase,
+        order,
+        reference,
+        transactionId,
+        reason: "amount_mismatch",
+        metadata: {
+          expected_amount: orderAmount,
+          received_amount: paidAmount,
+        },
+      });
 
       return NextResponse.json(
         {
           received: true,
-          error: "Amount mismatch. Order placed in payment review.",
+          error: "Amount mismatch. Order placed in manual review.",
         },
         { status: 409 }
       );
     }
 
-    const processorFeeAmount = event?.data?.fees
-      ? Number(event.data.fees) / 100
-      : 0;
+    const eventCurrency = normalizeCurrency(event?.data?.currency);
+    const orderCurrency = normalizeCurrency(order.currency);
+
+    if (eventCurrency && orderCurrency && eventCurrency !== orderCurrency) {
+      console.error("Webhook currency mismatch.", {
+        orderId: order.id,
+        expected: orderCurrency,
+        received: eventCurrency,
+      });
+
+      await markOrderManualReview({
+        supabase,
+        order,
+        reference,
+        transactionId,
+        reason: "currency_mismatch",
+        metadata: {
+          expected_currency: orderCurrency,
+          received_currency: eventCurrency,
+        },
+      });
+
+      return NextResponse.json(
+        {
+          received: true,
+          error: "Currency mismatch. Order placed in manual review.",
+        },
+        { status: 409 }
+      );
+    }
+
+    const processorFeeAmount = getEventProcessorFee(event);
+
+    const { error: referenceUpdateError } = await supabase
+      .from("orders")
+      .update({
+        checkout_session_id: reference,
+        paystack_transaction_reference: reference,
+        paystack_transaction_id: transactionId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", order.id)
+      .neq("payment_status", "paid");
+
+    if (referenceUpdateError) {
+      console.error("Webhook reference update error:", referenceUpdateError);
+    }
 
     const result = await processPaidOrder({
-      order,
+      order: {
+        ...order,
+        checkout_session_id: reference,
+        paystack_transaction_reference: reference,
+        paystack_transaction_id: transactionId,
+      },
       processorFeeAmount,
+      paystackReference: reference,
+      paystackTransactionId: transactionId,
+      paystackMetadata: {
+        source: "paystack_webhook",
+        event: event.event,
+        channel: event?.data?.channel || null,
+        gateway_response: event?.data?.gateway_response || null,
+        paid_at: event?.data?.paid_at || null,
+        fees: event?.data?.fees || null,
+        authorization: event?.data?.authorization || null,
+        customer: event?.data?.customer || null,
+      },
     });
 
     if (!result.processed && result.reason?.includes("inventory")) {
@@ -144,9 +346,10 @@ export async function POST(request: Request) {
       processed: result.processed,
       alreadyPaid: result.alreadyPaid,
       walletCredited: result.walletCredited,
+      settlementRecorded: result.settlementRecorded,
     });
   } catch (error) {
-    console.error(error);
+    console.error("Paystack webhook processing failed:", error);
 
     return NextResponse.json(
       { error: "Webhook processing failed." },

@@ -1,78 +1,115 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
-type PayoutAccount = {
+type TenantPayoutSetup = {
   id: string;
-  tenant_id: string;
-  payout_method: "bank" | "mobile_money";
-  bank_name: string | null;
-  bank_code: string | null;
-  account_number: string | null;
-  account_name: string | null;
-  momo_provider: string | null;
-  momo_number: string | null;
-  momo_name: string | null;
-  country: string;
-  currency: string;
-  is_default: boolean;
-  status: string;
-  created_at: string;
+  name: string;
+  slug: string;
+  currency: string | null;
+
+  paystack_subaccount_code: string | null;
+  paystack_business_name: string | null;
+  paystack_country: string | null;
+  paystack_bank_code: string | null;
+  paystack_bank_name: string | null;
+  paystack_account_number: string | null;
+  paystack_account_name: string | null;
+  paystack_settlement_currency: string | null;
+
+  platform_commission_percentage: number | null;
+  payment_fee_bearer: "merchant" | "platform" | null;
+
+  payout_setup_status:
+    | "not_started"
+    | "pending"
+    | "active"
+    | "failed"
+    | "disabled";
+  payout_setup_error: string | null;
+  payout_setup_updated_at: string | null;
 };
+
+function normalizeCurrency(value: string) {
+  return value.trim().toUpperCase();
+}
+
+function normalizeCountry(value: string) {
+  return value.trim().toUpperCase();
+}
+
+function maskAccount(value: string | null) {
+  if (!value) return "Not provided";
+  if (value.length <= 4) return value;
+  return `${"*".repeat(Math.max(0, value.length - 4))}${value.slice(-4)}`;
+}
+
+function formatDate(value: string | null) {
+  if (!value) return "Not updated yet";
+  return new Date(value).toLocaleString();
+}
+
+function statusClass(status: string) {
+  if (status === "active") return "bg-green-100 text-green-700";
+  if (status === "pending") return "bg-yellow-100 text-yellow-700";
+  if (status === "failed") return "bg-red-100 text-red-700";
+  if (status === "disabled") return "bg-slate-200 text-slate-700";
+  return "bg-slate-100 text-slate-600";
+}
 
 export default function PayoutSettingsPage() {
   const supabase = createClient();
 
-  const [tenantId, setTenantId] = useState<string | null>(null);
-  const [accounts, setAccounts] = useState<PayoutAccount[]>([]);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [tenant, setTenant] = useState<TenantPayoutSetup | null>(null);
 
-  const [payoutMethod, setPayoutMethod] = useState<"bank" | "mobile_money">(
-    "bank"
-  );
-
+  const [businessName, setBusinessName] = useState("");
+  const [countryCode, setCountryCode] = useState("GH");
   const [bankName, setBankName] = useState("");
   const [bankCode, setBankCode] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
   const [accountName, setAccountName] = useState("");
-
-  const [momoProvider, setMomoProvider] = useState("");
-  const [momoNumber, setMomoNumber] = useState("");
-  const [momoName, setMomoName] = useState("");
-
-  const [country, setCountry] = useState("GH");
-  const [currency, setCurrency] = useState("GHS");
-  const [isDefault, setIsDefault] = useState(true);
-  const [status, setStatus] = useState("active");
+  const [settlementCurrency, setSettlementCurrency] = useState("GHS");
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [creatingSubaccount, setCreatingSubaccount] = useState(false);
+
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
-  const resetForm = () => {
-    setEditingId(null);
-    setPayoutMethod("bank");
-    setBankName("");
-    setBankCode("");
-    setAccountNumber("");
-    setAccountName("");
-    setMomoProvider("");
-    setMomoNumber("");
-    setMomoName("");
-    setCountry("GH");
-    setCurrency("GHS");
-    setIsDefault(true);
-    setStatus("active");
-    setErrorMessage("");
-    setSuccessMessage("");
-  };
+  const setupStatus = tenant?.payout_setup_status || "not_started";
+  const commission = Number(tenant?.platform_commission_percentage || 5);
+  const feeBearer = tenant?.payment_fee_bearer || "merchant";
 
-  const fetchAccounts = async () => {
+  const settlementReady = useMemo(() => {
+    return Boolean(
+      businessName.trim() &&
+        /^[A-Z]{2}$/.test(normalizeCountry(countryCode)) &&
+        bankName.trim() &&
+        bankCode.trim() &&
+        accountNumber.trim() &&
+        accountName.trim() &&
+        /^[A-Z]{3}$/.test(normalizeCurrency(settlementCurrency))
+    );
+  }, [
+    businessName,
+    countryCode,
+    bankName,
+    bankCode,
+    accountNumber,
+    accountName,
+    settlementCurrency,
+  ]);
+
+  const fetchSetup = async (preserveMessages = false) => {
     try {
       setLoading(true);
-      setErrorMessage("");
+
+      if (!preserveMessages) {
+        setErrorMessage("");
+        setSuccessMessage("");
+      }
 
       const {
         data: { user },
@@ -85,554 +122,624 @@ export default function PayoutSettingsPage() {
 
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
-        .select("tenant_id")
+        .select("tenant_id, role")
         .eq("id", user.id)
-        .single();
+        .maybeSingle();
 
       if (profileError || !profile?.tenant_id) {
-        setErrorMessage("Tenant profile not found.");
+        setErrorMessage(profileError?.message || "Tenant profile not found.");
         return;
       }
 
-      setTenantId(profile.tenant_id);
-
-      const { data, error } = await supabase
-        .from("tenant_payout_accounts")
-        .select("*")
-        .eq("tenant_id", profile.tenant_id)
-        .order("created_at", { ascending: false });
-
-      if (error) {
-        setErrorMessage(error.message);
+      if (!["store_owner", "owner", "super_admin"].includes(profile.role || "")) {
+        setErrorMessage("You do not have permission to manage settlement setup.");
         return;
       }
 
-      setAccounts(data || []);
+      const { data: tenantData, error: tenantError } = await supabase
+        .from("tenants")
+        .select(`
+          id,
+          name,
+          slug,
+          currency,
+          paystack_subaccount_code,
+          paystack_business_name,
+          paystack_country,
+          paystack_bank_code,
+          paystack_bank_name,
+          paystack_account_number,
+          paystack_account_name,
+          paystack_settlement_currency,
+          platform_commission_percentage,
+          payment_fee_bearer,
+          payout_setup_status,
+          payout_setup_error,
+          payout_setup_updated_at
+        `)
+        .eq("id", profile.tenant_id)
+        .maybeSingle();
+
+      if (tenantError || !tenantData) {
+        setErrorMessage(tenantError?.message || "Store not found.");
+        return;
+      }
+
+      const loadedTenant = tenantData as TenantPayoutSetup;
+      setTenant(loadedTenant);
+
+      setBusinessName(loadedTenant.paystack_business_name || loadedTenant.name || "");
+      setCountryCode(normalizeCountry(loadedTenant.paystack_country || "GH"));
+      setBankName(loadedTenant.paystack_bank_name || "");
+      setBankCode(loadedTenant.paystack_bank_code || "");
+      setAccountNumber(loadedTenant.paystack_account_number || "");
+      setAccountName(loadedTenant.paystack_account_name || "");
+      setSettlementCurrency(
+        normalizeCurrency(
+          loadedTenant.paystack_settlement_currency ||
+            loadedTenant.currency ||
+            "GHS"
+        )
+      );
     } catch (error) {
       console.error(error);
-      setErrorMessage("Failed to load payout accounts.");
+      setErrorMessage("Failed to load settlement setup.");
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchAccounts();
+    fetchSetup();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const validateForm = () => {
-    if (!tenantId) {
-      setErrorMessage("Tenant not found.");
+    if (!tenant) {
+      setErrorMessage("Store not found.");
       return false;
     }
 
-    if (payoutMethod === "bank") {
-      if (!bankName.trim()) {
-        setErrorMessage("Bank name is required.");
-        return false;
-      }
-
-      if (!accountNumber.trim()) {
-        setErrorMessage("Account number is required.");
-        return false;
-      }
-
-      if (!accountName.trim()) {
-        setErrorMessage("Account name is required.");
-        return false;
-      }
+    if (!businessName.trim()) {
+      setErrorMessage("Business name is required.");
+      return false;
     }
 
-    if (payoutMethod === "mobile_money") {
-      if (!momoProvider.trim()) {
-        setErrorMessage("Mobile money provider is required.");
-        return false;
-      }
+    if (!/^[A-Z]{2}$/.test(normalizeCountry(countryCode))) {
+      setErrorMessage(
+        "Country code must be a valid 2-letter code, like GH, NG, KE, ZA, or US."
+      );
+      return false;
+    }
 
-      if (!momoNumber.trim()) {
-        setErrorMessage("Mobile money number is required.");
-        return false;
-      }
+    if (!bankName.trim()) {
+      setErrorMessage("Bank name is required.");
+      return false;
+    }
 
-      if (!momoName.trim()) {
-        setErrorMessage("Mobile money account name is required.");
-        return false;
-      }
+    if (!bankCode.trim()) {
+      setErrorMessage("Bank code is required.");
+      return false;
+    }
+
+    if (!accountNumber.trim()) {
+      setErrorMessage("Account number is required.");
+      return false;
+    }
+
+    if (!accountName.trim()) {
+      setErrorMessage("Account name is required.");
+      return false;
+    }
+
+    if (!/^[A-Z]{3}$/.test(normalizeCurrency(settlementCurrency))) {
+      setErrorMessage(
+        "Settlement currency must be a valid 3-letter currency code, like GHS, NGN, KES, ZAR, or USD."
+      );
+      return false;
     }
 
     return true;
   };
 
-  const unsetOtherDefaultAccounts = async () => {
-    if (!tenantId || !isDefault) return;
-
-    await supabase
-      .from("tenant_payout_accounts")
-      .update({ is_default: false })
-      .eq("tenant_id", tenantId);
-  };
-
-  const handleSave = async () => {
+  const handleSaveSetup = async () => {
     try {
       setSaving(true);
       setErrorMessage("");
       setSuccessMessage("");
 
-      if (!validateForm() || !tenantId) return;
+      if (!validateForm()) return;
 
-      await unsetOtherDefaultAccounts();
-
-      const payload = {
-        tenant_id: tenantId,
-        payout_method: payoutMethod,
-
-        bank_name: payoutMethod === "bank" ? bankName : null,
-        bank_code: payoutMethod === "bank" ? bankCode || null : null,
-        account_number: payoutMethod === "bank" ? accountNumber : null,
-        account_name: payoutMethod === "bank" ? accountName : null,
-
-        momo_provider:
-          payoutMethod === "mobile_money" ? momoProvider : null,
-        momo_number: payoutMethod === "mobile_money" ? momoNumber : null,
-        momo_name: payoutMethod === "mobile_money" ? momoName : null,
-
-        country,
-        currency,
-        is_default: isDefault,
-        status,
-        updated_at: new Date().toISOString(),
-      };
-
-      if (editingId) {
-        const { error } = await supabase
-          .from("tenant_payout_accounts")
-          .update(payload)
-          .eq("id", editingId)
-          .eq("tenant_id", tenantId);
-
-        if (error) {
-          setErrorMessage(error.message);
-          return;
+      const { data, error } = await supabase.rpc(
+        "update_my_paystack_payout_setup",
+        {
+          p_business_name: businessName.trim(),
+          p_bank_code: bankCode.trim(),
+          p_bank_name: bankName.trim(),
+          p_account_number: accountNumber.trim(),
+          p_account_name: accountName.trim(),
+          p_country: normalizeCountry(countryCode),
+          p_settlement_currency: normalizeCurrency(settlementCurrency),
         }
+      );
 
-        setSuccessMessage("Payout account updated successfully.");
-      } else {
-        const { error } = await supabase
-          .from("tenant_payout_accounts")
-          .insert(payload);
-
-        if (error) {
-          setErrorMessage(error.message);
-          return;
-        }
-
-        setSuccessMessage("Payout account added successfully.");
+      if (error) {
+        setErrorMessage(error.message);
+        return;
       }
 
-      resetForm();
-      fetchAccounts();
+      if (data) {
+        setTenant(data as TenantPayoutSetup);
+      }
+
+      setSuccessMessage(
+        "Settlement details saved. You can now activate Paystack settlement."
+      );
+
+      await fetchSetup(true);
     } catch (error) {
       console.error(error);
-      setErrorMessage("Failed to save payout account.");
+      setErrorMessage("Failed to save settlement setup.");
     } finally {
       setSaving(false);
     }
   };
 
-  const handleEdit = (account: PayoutAccount) => {
-    setEditingId(account.id);
-    setPayoutMethod(account.payout_method);
-
-    setBankName(account.bank_name || "");
-    setBankCode(account.bank_code || "");
-    setAccountNumber(account.account_number || "");
-    setAccountName(account.account_name || "");
-
-    setMomoProvider(account.momo_provider || "");
-    setMomoNumber(account.momo_number || "");
-    setMomoName(account.momo_name || "");
-
-    setCountry(account.country || "GH");
-    setCurrency(account.currency || "GHS");
-    setIsDefault(account.is_default);
-    setStatus(account.status || "active");
-
-    setErrorMessage("");
-    setSuccessMessage("");
-
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  const handleSetDefault = async (accountId: string) => {
-    if (!tenantId) return;
-
+  const handleCreateSubaccount = async () => {
     try {
+      setCreatingSubaccount(true);
       setErrorMessage("");
       setSuccessMessage("");
 
-      await supabase
-        .from("tenant_payout_accounts")
-        .update({ is_default: false })
-        .eq("tenant_id", tenantId);
+      if (!validateForm()) return;
 
-      const { error } = await supabase
-        .from("tenant_payout_accounts")
-        .update({
-          is_default: true,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", accountId)
-        .eq("tenant_id", tenantId);
-
-      if (error) {
-        setErrorMessage(error.message);
+      if (setupStatus === "not_started") {
+        setErrorMessage("Save your settlement details before activating Paystack.");
         return;
       }
 
-      setSuccessMessage("Default payout account updated.");
-      fetchAccounts();
-    } catch (error) {
-      console.error(error);
-      setErrorMessage("Failed to update default payout account.");
-    }
-  };
+      const response = await fetch("/api/paystack/subaccount/create", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
 
-  const handleDeactivate = async (accountId: string) => {
-    if (!tenantId) return;
+      const result = await response.json();
 
-    const confirmed = confirm("Deactivate this payout account?");
-    if (!confirmed) return;
-
-    try {
-      const { error } = await supabase
-        .from("tenant_payout_accounts")
-        .update({
-          status: "inactive",
-          is_default: false,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", accountId)
-        .eq("tenant_id", tenantId);
-
-      if (error) {
-        setErrorMessage(error.message);
+      if (!response.ok) {
+        setErrorMessage(
+          result.error || "Failed to activate Paystack settlement."
+        );
+        await fetchSetup(true);
         return;
       }
 
-      setSuccessMessage("Payout account deactivated.");
-      fetchAccounts();
+      setSuccessMessage(
+        "Paystack settlement activated successfully. Customer payments can now be split automatically."
+      );
+
+      await fetchSetup(true);
     } catch (error) {
       console.error(error);
-      setErrorMessage("Failed to deactivate payout account.");
+      setErrorMessage("Failed to activate Paystack settlement.");
+    } finally {
+      setCreatingSubaccount(false);
     }
   };
 
-  const maskAccount = (value: string | null) => {
-    if (!value) return "Not provided";
-    if (value.length <= 4) return value;
-    return `${"*".repeat(Math.max(0, value.length - 4))}${value.slice(-4)}`;
-  };
+  if (loading) {
+    return (
+      <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
+        <p className="text-slate-500">Loading settlement setup...</p>
+      </div>
+    );
+  }
+
+  if (!tenant) {
+    return (
+      <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
+        <h1 className="text-2xl font-bold text-slate-950">
+          Settlement setup unavailable
+        </h1>
+        <p className="mt-2 text-slate-500">
+          {errorMessage || "Could not load your store settlement setup."}
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
-      <div>
-        <a href="/wallet" className="text-sm text-slate-500 hover:text-black">
-          ← Back to Wallet
-        </a>
+      <section className="relative overflow-hidden rounded-[2rem] bg-slate-950 p-6 text-white shadow-sm sm:p-8">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(37,99,235,0.35),transparent_35%),radial-gradient(circle_at_top_left,rgba(168,85,247,0.22),transparent_35%)]" />
 
-        <h1 className="text-3xl font-bold mt-4">Payout Settings</h1>
-        <p className="text-slate-500 mt-2">
-          Add bank or mobile money details for merchant payout requests.
-        </p>
-      </div>
+        <div className="relative grid grid-cols-1 gap-8 lg:grid-cols-3 lg:items-center">
+          <div className="lg:col-span-2">
+            <a href="/wallet" className="text-sm text-slate-300 hover:text-white">
+              ← Back to Wallet
+            </a>
+
+            <div className="mt-6 inline-flex rounded-full border border-white/10 bg-white/10 px-4 py-2 text-sm text-slate-200">
+              Global Paystack split settlement
+            </div>
+
+            <h1 className="mt-5 text-4xl font-bold tracking-tight md:text-5xl">
+              Set up direct merchant settlement.
+            </h1>
+
+            <p className="mt-5 max-w-3xl text-lg leading-8 text-slate-300">
+              Add your country, currency, and bank details so customer payments
+              can be split automatically. StoreForge keeps the platform fee, and
+              your merchant share is settled through your Paystack subaccount.
+            </p>
+
+            <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <InfoBadge label="Platform fee" value={`${commission}%`} />
+              <InfoBadge
+                label="Payment fee bearer"
+                value={feeBearer === "merchant" ? "Merchant" : "StoreForge"}
+              />
+              <InfoBadge
+                label="Settlement currency"
+                value={settlementCurrency || "GHS"}
+              />
+            </div>
+          </div>
+
+          <div className="rounded-3xl border border-white/10 bg-white/10 p-5 backdrop-blur">
+            <p className="text-sm text-slate-300">Setup status</p>
+
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span
+                className={`rounded-full px-4 py-2 text-sm font-semibold capitalize ${statusClass(
+                  setupStatus
+                )}`}
+              >
+                {setupStatus.replaceAll("_", " ")}
+              </span>
+
+              {tenant.paystack_subaccount_code && (
+                <span className="rounded-full bg-green-100 px-4 py-2 text-sm font-semibold text-green-700">
+                  Subaccount linked
+                </span>
+              )}
+            </div>
+
+            <div className="mt-5 rounded-2xl bg-white/10 p-4">
+              <p className="text-xs uppercase tracking-wide text-slate-400">
+                Paystack subaccount
+              </p>
+              <p className="mt-2 break-all text-sm font-semibold">
+                {tenant.paystack_subaccount_code || "Not created yet"}
+              </p>
+            </div>
+
+            <p className="mt-4 text-xs leading-5 text-slate-400">
+              Last updated: {formatDate(tenant.payout_setup_updated_at)}
+            </p>
+          </div>
+        </div>
+      </section>
 
       {errorMessage && (
-        <div className="bg-red-100 text-red-700 p-4 rounded-xl">
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700">
           {errorMessage}
         </div>
       )}
 
       {successMessage && (
-        <div className="bg-green-100 text-green-700 p-4 rounded-xl">
+        <div className="rounded-2xl border border-green-200 bg-green-50 p-4 text-green-700">
           {successMessage}
         </div>
       )}
 
-      <div className="bg-white rounded-2xl shadow p-6 space-y-6">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <h2 className="text-xl font-semibold">
-              {editingId ? "Edit Payout Account" : "Add Payout Account"}
-            </h2>
-            <p className="text-sm text-slate-500 mt-1">
-              Merchants can receive payouts through bank transfer or mobile
-              money.
-            </p>
-          </div>
-
-          {editingId && (
-            <button
-              onClick={resetForm}
-              className="border px-4 py-2 rounded-xl text-sm hover:bg-slate-100"
-            >
-              Cancel Edit
-            </button>
-          )}
+      {tenant.payout_setup_error && (
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700">
+          <p className="font-semibold">Paystack setup error</p>
+          <p className="mt-1 text-sm">{tenant.payout_setup_error}</p>
         </div>
+      )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <label className="border rounded-xl p-4 flex items-center gap-3 cursor-pointer">
-            <input
-              type="radio"
-              checked={payoutMethod === "bank"}
-              onChange={() => setPayoutMethod("bank")}
-            />
-            <div>
-              <p className="font-medium">Bank Account</p>
-              <p className="text-xs text-slate-500">
-                Receive payouts to a bank account.
-              </p>
-            </div>
-          </label>
-
-          <label className="border rounded-xl p-4 flex items-center gap-3 cursor-pointer">
-            <input
-              type="radio"
-              checked={payoutMethod === "mobile_money"}
-              onChange={() => setPayoutMethod("mobile_money")}
-            />
-            <div>
-              <p className="font-medium">Mobile Money</p>
-              <p className="text-xs text-slate-500">
-                Receive payouts to a MoMo account.
-              </p>
-            </div>
-          </label>
-        </div>
-
-        {payoutMethod === "bank" ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <input
-              value={bankName}
-              onChange={(e) => setBankName(e.target.value)}
-              placeholder="Bank name"
-              className="border rounded-xl p-3"
-            />
-
-            <input
-              value={bankCode}
-              onChange={(e) => setBankCode(e.target.value)}
-              placeholder="Bank code optional"
-              className="border rounded-xl p-3"
-            />
-
-            <input
-              value={accountNumber}
-              onChange={(e) => setAccountNumber(e.target.value)}
-              placeholder="Account number"
-              className="border rounded-xl p-3"
-            />
-
-            <input
-              value={accountName}
-              onChange={(e) => setAccountName(e.target.value)}
-              placeholder="Account name"
-              className="border rounded-xl p-3"
-            />
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <select
-              value={momoProvider}
-              onChange={(e) => setMomoProvider(e.target.value)}
-              className="border rounded-xl p-3"
-            >
-              <option value="">Select provider</option>
-              <option value="MTN Mobile Money">MTN Mobile Money</option>
-              <option value="Vodafone Cash">Vodafone Cash</option>
-              <option value="AirtelTigo Money">AirtelTigo Money</option>
-              <option value="Other">Other</option>
-            </select>
-
-            <input
-              value={momoNumber}
-              onChange={(e) => setMomoNumber(e.target.value)}
-              placeholder="Mobile money number"
-              className="border rounded-xl p-3"
-            />
-
-            <input
-              value={momoName}
-              onChange={(e) => setMomoName(e.target.value)}
-              placeholder="Mobile money account name"
-              className="border rounded-xl p-3"
-            />
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <input
-            value={country}
-            onChange={(e) => setCountry(e.target.value)}
-            placeholder="Country"
-            className="border rounded-xl p-3"
-          />
-
-          <input
-            value={currency}
-            onChange={(e) => setCurrency(e.target.value)}
-            placeholder="Currency"
-            className="border rounded-xl p-3"
-          />
-
-          <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-            className="border rounded-xl p-3"
+      <section className="grid grid-cols-1 gap-8 xl:grid-cols-3">
+        <div className="space-y-8 xl:col-span-2">
+          <Panel
+            title="Settlement account"
+            description="Use the country and bank details supported by Paystack for your location. Bank codes vary by country, so enter the correct code for your bank."
           >
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-            <option value="pending_verification">Pending Verification</option>
-            <option value="rejected">Rejected</option>
-          </select>
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+              <Field label="Business name">
+                <input
+                  value={businessName}
+                  onChange={(event) => setBusinessName(event.target.value)}
+                  placeholder="Example: Tech World"
+                  className="field-input"
+                />
+              </Field>
 
-          <label className="border rounded-xl p-3 flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={isDefault}
-              onChange={(e) => setIsDefault(e.target.checked)}
-            />
-            Default payout account
-          </label>
-        </div>
+              <Field label="Country code">
+                <input
+                  value={countryCode}
+                  onChange={(event) =>
+                    setCountryCode(normalizeCountry(event.target.value))
+                  }
+                  placeholder="GH, NG, KE, ZA, US"
+                  maxLength={2}
+                  className="field-input uppercase"
+                />
+              </Field>
 
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="bg-black text-white px-6 py-3 rounded-xl font-medium disabled:opacity-50"
-        >
-          {saving
-            ? "Saving..."
-            : editingId
-              ? "Update Payout Account"
-              : "Save Payout Account"}
-        </button>
-      </div>
+              <Field label="Settlement currency">
+                <input
+                  value={settlementCurrency}
+                  onChange={(event) =>
+                    setSettlementCurrency(normalizeCurrency(event.target.value))
+                  }
+                  placeholder="GHS, NGN, KES, ZAR, USD"
+                  maxLength={3}
+                  className="field-input uppercase"
+                />
+              </Field>
 
-      <div className="bg-white rounded-2xl shadow p-6">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h2 className="text-xl font-semibold">Saved Payout Accounts</h2>
-            <p className="text-sm text-slate-500 mt-1">
-              Manage your payout destinations.
-            </p>
-          </div>
+              <Field label="Bank name">
+                <input
+                  value={bankName}
+                  onChange={(event) => setBankName(event.target.value)}
+                  placeholder="Bank name"
+                  className="field-input"
+                />
+              </Field>
 
-          <span className="text-sm text-slate-500">
-            {accounts.length} account(s)
-          </span>
-        </div>
+              <Field label="Bank code">
+                <input
+                  value={bankCode}
+                  onChange={(event) => setBankCode(event.target.value)}
+                  placeholder="Bank code from Paystack"
+                  className="field-input"
+                />
+              </Field>
 
-        {loading ? (
-          <p className="text-slate-500">Loading payout accounts...</p>
-        ) : accounts.length === 0 ? (
-          <div className="bg-slate-50 border rounded-2xl p-8 text-center">
-            <h3 className="font-semibold">No payout account yet</h3>
-            <p className="text-slate-500 mt-2">
-              Add a bank account or mobile money number before requesting
-              payouts.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {accounts.map((account) => (
-              <div
-                key={account.id}
-                className="border rounded-2xl p-5 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4"
+              <Field label="Account number">
+                <input
+                  value={accountNumber}
+                  onChange={(event) => setAccountNumber(event.target.value)}
+                  placeholder="Account number"
+                  className="field-input"
+                />
+              </Field>
+
+              <Field label="Account name">
+                <input
+                  value={accountName}
+                  onChange={(event) => setAccountName(event.target.value)}
+                  placeholder="Account name"
+                  className="field-input md:col-span-2"
+                />
+              </Field>
+            </div>
+
+            <div className="mt-6 rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm leading-6 text-blue-800">
+              <strong>Note:</strong> Bank codes are different in every country.
+              For now, enter the bank code manually. Later, we can add a dynamic
+              “Load banks by country” feature using Paystack’s bank list API.
+            </div>
+
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+              <button
+                onClick={handleSaveSetup}
+                disabled={saving}
+                className="rounded-2xl bg-slate-950 px-6 py-4 font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
               >
-                <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs capitalize">
-                      {account.payout_method.replaceAll("_", " ")}
-                    </span>
+                {saving ? "Saving..." : "Save settlement details"}
+              </button>
 
-                    <span
-                      className={`px-3 py-1 rounded-full text-xs capitalize ${
-                        account.status === "active"
-                          ? "bg-green-100 text-green-700"
-                          : account.status === "pending_verification"
-                            ? "bg-yellow-100 text-yellow-700"
-                            : "bg-red-100 text-red-700"
-                      }`}
-                    >
-                      {account.status.replaceAll("_", " ")}
-                    </span>
+              <button
+                onClick={handleCreateSubaccount}
+                disabled={
+                  creatingSubaccount ||
+                  saving ||
+                  !settlementReady ||
+                  setupStatus === "not_started"
+                }
+                className="rounded-2xl bg-blue-600 px-6 py-4 font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {creatingSubaccount
+                  ? "Activating..."
+                  : tenant.paystack_subaccount_code
+                  ? "Refresh Paystack subaccount"
+                  : "Activate Paystack settlement"}
+              </button>
+            </div>
 
-                    {account.is_default && (
-                      <span className="px-3 py-1 rounded-full bg-blue-100 text-blue-700 text-xs">
-                        Default
-                      </span>
-                    )}
-                  </div>
+            {setupStatus === "not_started" && (
+              <p className="mt-4 text-sm text-yellow-700">
+                Save your settlement details first. After saving, activate
+                Paystack settlement to create your subaccount.
+              </p>
+            )}
+          </Panel>
 
-                  {account.payout_method === "bank" ? (
-                    <div className="mt-3">
-                      <h3 className="font-semibold">
-                        {account.account_name || "Bank Account"}
-                      </h3>
-                      <p className="text-sm text-slate-500">
-                        {account.bank_name || "Bank"} ·{" "}
-                        {maskAccount(account.account_number)}
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="mt-3">
-                      <h3 className="font-semibold">
-                        {account.momo_name || "Mobile Money Account"}
-                      </h3>
-                      <p className="text-sm text-slate-500">
-                        {account.momo_provider || "MoMo"} ·{" "}
-                        {maskAccount(account.momo_number)}
-                      </p>
-                    </div>
-                  )}
+          <Panel
+            title="How split settlement works"
+            description="This keeps merchants in control while StoreForge still earns its platform fee."
+          >
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <ExplainerCard
+                step="1"
+                title="Customer pays"
+                text="The customer pays the full order amount at checkout."
+              />
+              <ExplainerCard
+                step="2"
+                title="Fees are applied"
+                text={`StoreForge keeps ${commission}% platform fee. Paystack processing fees are borne by the ${feeBearer}.`}
+              />
+              <ExplainerCard
+                step="3"
+                title="Merchant settles"
+                text="Your merchant share is settled through your Paystack subaccount."
+              />
+            </div>
+          </Panel>
+        </div>
 
-                  <p className="text-xs text-slate-400 mt-2">
-                    {account.country} · {account.currency}
-                  </p>
-                </div>
+        <aside className="space-y-8">
+          <Panel title="Current setup">
+            <div className="space-y-4 text-sm">
+              <SetupRow label="Store" value={tenant.name} />
+              <SetupRow label="Store currency" value={tenant.currency || "GHS"} />
+              <SetupRow label="Country" value={tenant.paystack_country || countryCode} />
+              <SetupRow
+                label="Settlement currency"
+                value={tenant.paystack_settlement_currency || settlementCurrency}
+              />
+              <SetupRow
+                label="Business name"
+                value={tenant.paystack_business_name || "Not provided"}
+              />
+              <SetupRow
+                label="Bank"
+                value={tenant.paystack_bank_name || "Not provided"}
+              />
+              <SetupRow
+                label="Bank code"
+                value={tenant.paystack_bank_code || "Not provided"}
+              />
+              <SetupRow
+                label="Account"
+                value={maskAccount(tenant.paystack_account_number)}
+              />
+              <SetupRow
+                label="Account name"
+                value={tenant.paystack_account_name || "Not provided"}
+              />
+              <SetupRow
+                label="Subaccount"
+                value={tenant.paystack_subaccount_code || "Not created"}
+              />
+            </div>
+          </Panel>
 
-                <div className="flex flex-wrap gap-2 lg:justify-end">
-                  {!account.is_default && account.status === "active" && (
-                    <button
-                      onClick={() => handleSetDefault(account.id)}
-                      className="border px-4 py-2 rounded-xl text-sm hover:bg-slate-100"
-                    >
-                      Set Default
-                    </button>
-                  )}
+          <Panel title="Settlement policy">
+            <div className="space-y-4 text-sm text-slate-600">
+              <PolicyItem
+                title="Platform fee"
+                text={`StoreForge charges ${commission}% on successful orders.`}
+              />
 
-                  <button
-                    onClick={() => handleEdit(account)}
-                    className="border px-4 py-2 rounded-xl text-sm hover:bg-slate-100"
-                  >
-                    Edit
-                  </button>
+              <PolicyItem
+                title="Processing fee"
+                text={
+                  feeBearer === "merchant"
+                    ? "Paystack processing fees are deducted from the merchant settlement."
+                    : "StoreForge bears Paystack processing fees."
+                }
+              />
 
-                  {account.status === "active" && (
-                    <button
-                      onClick={() => handleDeactivate(account.id)}
-                      className="bg-red-500 text-white px-4 py-2 rounded-xl text-sm hover:bg-red-600"
-                    >
-                      Deactivate
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
+              <PolicyItem
+                title="Global merchants"
+                text="Merchants can enter the country, currency, bank name, and Paystack bank code that apply to their location."
+              />
+
+              <PolicyItem
+                title="Fallback payouts"
+                text="Manual payout requests may still be used for failed settlements, adjustments, or special cases."
+              />
+            </div>
+          </Panel>
+        </aside>
+      </section>
+    </div>
+  );
+}
+
+function InfoBadge({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
+      <p className="text-xs uppercase tracking-wide text-slate-400">{label}</p>
+      <p className="mt-2 font-bold text-white">{value}</p>
+    </div>
+  );
+}
+
+function Panel({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="mb-6">
+        <h2 className="text-2xl font-bold text-slate-950">{title}</h2>
+        {description && (
+          <p className="mt-2 text-sm leading-6 text-slate-500">
+            {description}
+          </p>
         )}
       </div>
+
+      {children}
+    </section>
+  );
+}
+
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-2 block text-sm font-medium text-slate-700">
+        {label}
+      </span>
+      {children}
+    </label>
+  );
+}
+
+function ExplainerCard({
+  step,
+  title,
+  text,
+}: {
+  step: string;
+  title: string;
+  text: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-950 text-sm font-bold text-white">
+        {step}
+      </div>
+      <h3 className="mt-4 font-bold text-slate-950">{title}</h3>
+      <p className="mt-2 text-sm leading-6 text-slate-500">{text}</p>
+    </div>
+  );
+}
+
+function SetupRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-3 last:border-b-0 last:pb-0">
+      <span className="text-slate-500">{label}</span>
+      <span className="max-w-[60%] break-words text-right font-medium text-slate-950">
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function PolicyItem({ title, text }: { title: string; text: string }) {
+  return (
+    <div className="rounded-2xl bg-slate-50 p-4">
+      <p className="font-semibold text-slate-950">{title}</p>
+      <p className="mt-1 leading-6">{text}</p>
     </div>
   );
 }

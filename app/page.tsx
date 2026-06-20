@@ -208,7 +208,7 @@ export default function Home() {
                 prefetch={false}
                 className="rounded-2xl border border-white/15 px-7 py-4 text-center font-semibold text-white transition hover:bg-white/10"
               >
-                View Tech World demo
+                View Tech World
               </Link>
             </div>
 
@@ -500,7 +500,7 @@ export default function Home() {
               prefetch={false}
               className="rounded-2xl border border-white/15 px-8 py-4 font-semibold text-white transition hover:bg-white/10"
             >
-              View Tech World demo
+              View Tech World
             </Link>
           </div>
         </div>

@@ -2,6 +2,8 @@ import Image from "next/image";
 import Link from "next/link";
 
 const DEMO_STORE_PATH = "/store/tech-world";
+const HERO_VIDEO_SRC = "/videos/storeforge_homepage_hero_promo.mp4";
+const HERO_VIDEO_POSTER = "/videos/storeforge_homepage_hero_poster.png";
 
 const features = [
   {
@@ -85,6 +87,15 @@ export default function Home() {
           }
         }
 
+        @keyframes glowPulse {
+          0%, 100% {
+            opacity: 0.65;
+          }
+          50% {
+            opacity: 1;
+          }
+        }
+
         .typing-line {
           display: inline-block;
           max-width: max-content;
@@ -98,6 +109,10 @@ export default function Home() {
           animation: floatSoft 6s ease-in-out infinite;
         }
 
+        .glow-pulse {
+          animation: glowPulse 4s ease-in-out infinite;
+        }
+
         @media (prefers-reduced-motion: reduce) {
           .typing-line {
             width: auto;
@@ -105,7 +120,8 @@ export default function Home() {
             border-right: 0;
           }
 
-          .float-soft {
+          .float-soft,
+          .glow-pulse {
             animation: none;
           }
         }
@@ -164,11 +180,28 @@ export default function Home() {
         </div>
       </header>
 
-      <section className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(37,99,235,0.38),transparent_34%),radial-gradient(circle_at_top_left,rgba(168,85,247,0.22),transparent_34%)]" />
-        <div className="absolute left-1/2 top-24 h-72 w-72 -translate-x-1/2 rounded-full bg-sky-500/10 blur-3xl" />
+      <section className="relative min-h-[calc(100vh-73px)] overflow-hidden">
+        <div className="absolute inset-0">
+          <video
+            className="h-full w-full object-cover opacity-45"
+            autoPlay
+            muted
+            loop
+            playsInline
+            preload="metadata"
+            poster={HERO_VIDEO_POSTER}
+            aria-hidden="true"
+          >
+            <source src={HERO_VIDEO_SRC} type="video/mp4" />
+          </video>
 
-        <div className="relative mx-auto grid max-w-7xl grid-cols-1 gap-12 px-4 py-16 sm:px-6 sm:py-20 lg:grid-cols-2 lg:items-center lg:py-28">
+          <div className="absolute inset-0 bg-slate-950/70" />
+          <div className="absolute inset-0 bg-gradient-to-b from-slate-950/40 via-slate-950/75 to-slate-950" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(37,99,235,0.42),transparent_34%),radial-gradient(circle_at_top_left,rgba(168,85,247,0.25),transparent_34%)]" />
+          <div className="glow-pulse absolute left-1/2 top-24 h-80 w-80 -translate-x-1/2 rounded-full bg-sky-500/15 blur-3xl" />
+        </div>
+
+        <div className="relative mx-auto grid max-w-7xl grid-cols-1 gap-12 px-4 py-16 sm:px-6 sm:py-20 lg:min-h-[calc(100vh-73px)] lg:grid-cols-2 lg:items-center lg:py-24">
           <div>
             <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-4 py-2 text-sm text-slate-200 shadow-sm backdrop-blur">
               <Image
@@ -206,7 +239,7 @@ export default function Home() {
               <Link
                 href={DEMO_STORE_PATH}
                 prefetch={false}
-                className="rounded-2xl border border-white/15 px-7 py-4 text-center font-semibold text-white transition hover:bg-white/10"
+                className="rounded-2xl border border-white/15 bg-white/5 px-7 py-4 text-center font-semibold text-white backdrop-blur transition hover:bg-white/10"
               >
                 View Tech World
               </Link>
@@ -219,7 +252,7 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="float-soft rounded-[2rem] border border-white/10 bg-white/10 p-2 shadow-2xl backdrop-blur transition duration-300 motion-safe:hover:-translate-y-1 sm:p-3">
+          <div className="float-soft hidden rounded-[2rem] border border-white/10 bg-white/10 p-2 shadow-2xl backdrop-blur transition duration-300 motion-safe:hover:-translate-y-1 sm:p-3 lg:block">
             <Image
               src="/images/homepage/storeforge-dashboard-hero.png"
               alt="StoreForge merchant dashboard showing orders, revenue, customers, notifications, and low stock alerts"
@@ -312,7 +345,7 @@ export default function Home() {
             <div className="rounded-[2rem] border border-slate-200 bg-white p-2 shadow-xl transition duration-300 motion-safe:hover:-translate-y-1 sm:p-3">
               <Image
                 src="/images/homepage/storeforge-storefronts.png"
-                alt="StoreForge storefront demo previews for tech, fashion, and beauty stores"
+                alt="StoreForge storefront demo previews for active merchant stores"
                 width={1672}
                 height={941}
                 className="h-auto w-full rounded-[1.5rem]"

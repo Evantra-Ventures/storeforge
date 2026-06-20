@@ -183,21 +183,22 @@ export default function Home() {
       <section className="relative min-h-[calc(100vh-73px)] overflow-hidden">
         <div className="absolute inset-0">
           <video
-            className="h-full w-full object-cover opacity-45"
+            className="h-full w-full object-cover opacity-85"
             autoPlay
             muted
             loop
             playsInline
-            preload="metadata"
+            preload="auto"
             poster={HERO_VIDEO_POSTER}
             aria-hidden="true"
           >
             <source src={HERO_VIDEO_SRC} type="video/mp4" />
           </video>
 
-          <div className="absolute inset-0 bg-slate-950/70" />
-          <div className="absolute inset-0 bg-gradient-to-b from-slate-950/40 via-slate-950/75 to-slate-950" />
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(37,99,235,0.42),transparent_34%),radial-gradient(circle_at_top_left,rgba(168,85,247,0.25),transparent_34%)]" />
+          <div className="absolute inset-0 bg-slate-950/35" />
+          <div className="absolute inset-0 bg-gradient-to-r from-slate-950/90 via-slate-950/55 to-slate-950/20" />
+          <div className="absolute inset-0 bg-gradient-to-b from-slate-950/30 via-transparent to-slate-950/85" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(37,99,235,0.28),transparent_34%),radial-gradient(circle_at_top_left,rgba(168,85,247,0.18),transparent_34%)]" />
           <div className="glow-pulse absolute left-1/2 top-24 h-80 w-80 -translate-x-1/2 rounded-full bg-sky-500/15 blur-3xl" />
         </div>
 
@@ -252,7 +253,7 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="float-soft hidden rounded-[2rem] border border-white/10 bg-white/10 p-2 shadow-2xl backdrop-blur transition duration-300 motion-safe:hover:-translate-y-1 sm:p-3 lg:block">
+          <div className="float-soft hidden rounded-[2rem] border border-white/10 bg-white/5 p-2 shadow-2xl backdrop-blur-sm transition duration-300 motion-safe:hover:-translate-y-1 sm:p-3 xl:block">
             <Image
               src="/images/homepage/storeforge-dashboard-hero.png"
               alt="StoreForge merchant dashboard showing orders, revenue, customers, notifications, and low stock alerts"

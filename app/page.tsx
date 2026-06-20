@@ -1,6 +1,8 @@
 import Image from "next/image";
 import Link from "next/link";
 
+const DEMO_STORE_PATH = "/store/tech-world";
+
 const features = [
   {
     title: "Launch beautiful storefronts",
@@ -202,10 +204,11 @@ export default function Home() {
               </Link>
 
               <Link
-                href="/store/tech-world"
+                href={DEMO_STORE_PATH}
+                prefetch={false}
                 className="rounded-2xl border border-white/15 px-7 py-4 text-center font-semibold text-white transition hover:bg-white/10"
               >
-                View demo store
+                View Tech World demo
               </Link>
             </div>
 
@@ -290,17 +293,18 @@ export default function Home() {
 
               <div className="mt-8 flex flex-col gap-4 sm:flex-row">
                 <Link
-                  href="https://storeforge-e2gi.vercel.app/store/tech-world"
+                  href={DEMO_STORE_PATH}
+                  prefetch={false}
                   className="rounded-2xl bg-slate-950 px-6 py-4 text-center font-semibold text-white transition hover:bg-slate-800"
                 >
                   Visit Tech World
                 </Link>
 
                 <Link
-                  href="/store/fashion-hub"
+                  href="/start-selling"
                   className="rounded-2xl border border-slate-300 px-6 py-4 text-center font-semibold transition hover:bg-white"
                 >
-                  Visit Fashion Hub
+                  Create your own store
                 </Link>
               </div>
             </div>
@@ -492,10 +496,11 @@ export default function Home() {
             </Link>
 
             <Link
-              href="/login"
+              href={DEMO_STORE_PATH}
+              prefetch={false}
               className="rounded-2xl border border-white/15 px-8 py-4 font-semibold text-white transition hover:bg-white/10"
             >
-              Log in to dashboard
+              View Tech World demo
             </Link>
           </div>
         </div>
